@@ -85,6 +85,11 @@ func TestGetTorrentsBypassesTorboxCache(t *testing.T) {
 			t.Errorf("bypass_cache = %q, want true", got)
 		}
 
+		if strings.Contains(r.URL.Path, "/usenet/") {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = fmt.Fprint(w, `{"success":true,"data":[]}`)
+			return
+		}
 		offset := r.URL.Query().Get("offset")
 		mu.Lock()
 		offsets = append(offsets, offset)
@@ -100,6 +105,7 @@ func TestGetTorrentsBypassesTorboxCache(t *testing.T) {
 	t.Cleanup(server.Close)
 
 	tb := testTorbox(server.URL)
+	tb.Profile = &types.Profile{Type: usenetPlan} // the usenet listing must bypass the cache too
 	torrents, err := tb.GetTorrents()
 	if err != nil {
 		t.Fatalf("GetTorrents() error = %v", err)
