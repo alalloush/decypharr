@@ -24,7 +24,10 @@ import (
 	"go.uber.org/ratelimit"
 )
 
-const allDebridNoPeerStatusCode = 7
+const (
+	defaultHost               = "https://api.alldebrid.com/v4.1"
+	allDebridNoPeerStatusCode = 7
+)
 
 type AllDebrid struct {
 	Host                  string `json:"host"`
@@ -73,7 +76,7 @@ func New(dc config.Debrid, ratelimits map[string]ratelimit.Limiter) (*AllDebrid,
 		autoExpiresLinksAfter = 48 * time.Hour
 	}
 	ad := &AllDebrid{
-		Host:                  "https://api.alldebrid.com/v4.1",
+		Host:                  dc.APIBaseURL(defaultHost),
 		APIKey:                dc.APIKey,
 		accountsManager:       account.NewManager(dc, ratelimits["download"], _log),
 		autoExpiresLinksAfter: autoExpiresLinksAfter,

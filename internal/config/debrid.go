@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"runtime"
+	"strings"
 )
 
 type Debrid struct {
@@ -24,6 +25,10 @@ type Debrid struct {
 	Workers                      int      `json:"workers,omitempty"`
 	AutoExpireLinksAfter         string   `json:"auto_expire_links_after,omitempty"`
 	UserAgent                    string   `json:"user_agent,omitempty"`
+	// APIHost overrides the provider's API base URL: scheme, host and version
+	// path, e.g. https://api.real-debrid.com/rest/1.0. Empty uses the
+	// provider's public API. Meant for tests and fake providers.
+	APIHost string `json:"api_host,omitempty"`
 
 	// Folder
 	Folder        string `json:"folder,omitempty"`          // Deprecated. Use Mount MountPath instead.
@@ -35,6 +40,15 @@ type Debrid struct {
 
 	// Directories
 	Directories map[string]WebdavDirectories `json:"directories,omitempty"` // Deprecated. Use global setting instead.
+}
+
+// APIBaseURL returns the configured API host without trailing slashes, or
+// defaultHost when none is configured.
+func (d Debrid) APIBaseURL(defaultHost string) string {
+	if host := strings.TrimRight(d.APIHost, "/"); host != "" {
+		return host
+	}
+	return defaultHost
 }
 
 func (c *Config) updateDebrid(d Debrid) Debrid {
@@ -109,6 +123,9 @@ func (c *Config) applyDebridEnvVars() {
 			}
 			if proxy := getEnv(prefix + "PROXY"); proxy != "" {
 				c.Debrids[i].Proxy = proxy
+			}
+			if apiHost := getEnv(prefix + "API_HOST"); apiHost != "" {
+				c.Debrids[i].APIHost = apiHost
 			}
 		}
 	}

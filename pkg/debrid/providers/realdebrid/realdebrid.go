@@ -27,6 +27,7 @@ import (
 )
 
 const (
+	defaultHost          = "https://api.real-debrid.com/rest/1.0"
 	profileCacheDuration = 1 * time.Hour
 )
 
@@ -81,7 +82,7 @@ func New(dc config.Debrid, ratelimits map[string]ratelimit.Limiter) (*RealDebrid
 	}
 
 	r := &RealDebrid{
-		Host:                  "https://api.real-debrid.com/rest/1.0",
+		Host:                  dc.APIBaseURL(defaultHost),
 		APIKey:                dc.APIKey,
 		accountsManager:       account.NewManager(dc, ratelimits["download"], _log),
 		autoExpiresLinksAfter: autoExpiresLinksAfter,

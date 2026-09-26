@@ -80,7 +80,7 @@ func New(dc config.Debrid, ratelimits map[string]ratelimit.Limiter) (*Premiumize
 	}
 
 	return &Premiumize{
-		Host:                  defaultHost,
+		Host:                  dc.APIBaseURL(defaultHost),
 		APIKey:                dc.APIKey,
 		client:                request.New(opts...),
 		accountsManager:       account.NewManager(dc, ratelimits["download"], _log),

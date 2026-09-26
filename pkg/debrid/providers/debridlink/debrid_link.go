@@ -23,6 +23,8 @@ import (
 	"go.uber.org/ratelimit"
 )
 
+const defaultHost = "https://debrid-link.com/api/v2"
+
 type DebridLink struct {
 	Host             string `json:"host"`
 	APIKey           string
@@ -73,7 +75,7 @@ func New(dc config.Debrid, ratelimits map[string]ratelimit.Limiter) (*DebridLink
 		autoExpiresLinksAfter = 48 * time.Hour
 	}
 	dbl := &DebridLink{
-		Host:                  "https://debrid-link.com/api/v2",
+		Host:                  dc.APIBaseURL(defaultHost),
 		APIKey:                dc.APIKey,
 		accountsManager:       account.NewManager(dc, ratelimits["download"], log),
 		DownloadUncached:      dc.DownloadUncached,
