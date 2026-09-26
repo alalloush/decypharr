@@ -10,7 +10,7 @@ import "testing"
 // The second half guards against over-correcting: genuinely permanent codes must
 // stay permanent, otherwise the caller would refetch forever on a dead file.
 func TestTransientCodesAreRefetchable(t *testing.T) {
-	transient := []string{"400", "429", "500", "502", "503", "504", "read_pxy_timeout", "some_unrecognised_code"}
+	transient := []string{"400", "404", "429", "500", "502", "503", "504", "read_pxy_timeout", "some_unrecognised_code"}
 	for _, code := range transient {
 		e := ErrorCodeToLinkError(code)
 		if e.IsPermanent() {
@@ -21,7 +21,7 @@ func TestTransientCodesAreRefetchable(t *testing.T) {
 		}
 	}
 
-	permanent := []string{"401", "unauthorized", "404", "link_not_found", "file_not_available"}
+	permanent := []string{"401", "unauthorized", "link_not_found", "file_not_available"}
 	for _, code := range permanent {
 		e := ErrorCodeToLinkError(code)
 		if !e.IsPermanent() {
