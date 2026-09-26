@@ -168,10 +168,22 @@ func ErrorCodeToLinkError(code string) *Error {
 	// instead of simply refetching the link.
 	case "400":
 		return NewRefetchableError(ErrLinkRejected, code)
+	// Transient provider codes must not be permanent. fetchAndValidate memoises
+	// a permanent failure against the download URL; for providers whose URL is
+	// deterministic that key never rotates, so one 502 would leave the file
+	// unreadable until the memo is cleared or the process restarts. Retryable
+	// and refetchable failures are refetched instead and never memoised.
 	case "503", "read_pxy_timeout":
 		return NewRetryableError(Err503, code)
+	case "500", "502", "504":
+		return NewRetryableError(fmt.Errorf("HTTP %s from provider", code), code)
 	default:
-		return NewPermanentError(fmt.Errorf("unknown error code: %s", code), code)
+		// An unrecognised code is not evidence of permanent failure. Treating it
+		// as permanent means one transient 400 poisons the file until restart,
+		// which is what users see as "playback works, then stops until I
+		// restart the container". Allow a refetch instead, which also clears any
+		// poisoned cache entry.
+		return NewRefetchableError(fmt.Errorf("unknown error code: %s", code), code)
 	}
 }
 
