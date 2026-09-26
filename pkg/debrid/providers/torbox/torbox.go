@@ -511,30 +511,52 @@ func (tb *Torbox) GetDownloadLink(ctx context.Context, id string, file *types.Fi
 	return tb.accountsManager.GetDownloadLink(ctx, id, file, tb.fetchDownloadLink)
 }
 
+// cdnLinkLifetime bounds how long a resolved CDN URL is reused. TorBox documents
+// requestdl as opening a link "for 3 hours" and, in the same paragraph, a
+// "1 hour time limit ... for starting downloads". Every range request starts a
+// new download, so reuse a URL for at most an hour. The link service refetches
+// a URL the CDN rejects earlier.
+const cdnLinkLifetime = time.Hour
+
+// fetchDownloadLink resolves the file's CDN URL once, for reuse by every range
+// request until it expires. The redirect=true permalink would cost one
+// requestdl call per connection (each open, seek and reconnect), which runs
+// into TorBox's 300 requests/min limit while streaming or scanning a library.
 func (tb *Torbox) fetchDownloadLink(ctx context.Context, account *account.Account, id string, file *types.File) (types.DownloadLink, error) {
-	query := url.Values{}
-	query.Set("token", account.Token)
-	query.Set("torrent_id", id)
-	query.Set("file_id", file.Id)
-	query.Set("redirect", "true")
+	var res DownloadLinksResponse
+	resp, err := tb.doGetWithClient(ctx, account.Client(), "/api/torrents/requestdl", map[string]string{
+		"token":      account.Token,
+		"torrent_id": id,
+		"file_id":    file.Id,
+	}, &res)
+	if err != nil {
+		return types.DownloadLink{}, fmt.Errorf("torbox requestdl: %w", err)
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return types.DownloadLink{}, fmt.Errorf("torbox requestdl: HTTP %d", resp.StatusCode)
+	}
+	if !res.Success || res.Data == nil || *res.Data == "" {
+		return types.DownloadLink{}, fmt.Errorf("torbox requestdl returned no link: %v %s", res.Error, res.Detail)
+	}
 
-	downloadURL := fmt.Sprintf("%s/api/torrents/requestdl?%s", tb.Host, query.Encode())
-
+	lifetime := cdnLinkLifetime
+	if tb.autoExpiresLinksAfter > 0 && tb.autoExpiresLinksAfter < lifetime {
+		lifetime = tb.autoExpiresLinksAfter
+	}
 	now := time.Now()
-
-	// Always expires
-	dl := types.DownloadLink{
-		Filename:     file.Name,
-		Size:         file.Size,
-		Token:        tb.APIKey,
+	return types.DownloadLink{
+		Filename: file.Name,
+		Size:     file.Size,
+		// The account that fetched the link caches it; DeleteLink and account
+		// disabling look the account up by this token.
+		Token:        account.Token,
 		Link:         file.Link,
-		DownloadLink: downloadURL,
+		DownloadLink: *res.Data,
 		Debrid:       tb.config.Name,
 		Id:           file.Id,
 		Generated:    now,
-		ExpiresAt:    now.Add(tb.autoExpiresLinksAfter),
-	}
-	return dl, nil
+		ExpiresAt:    now.Add(lifetime),
+	}, nil
 }
 
 func (tb *Torbox) GetTorrents() ([]*types.Torrent, error) {
