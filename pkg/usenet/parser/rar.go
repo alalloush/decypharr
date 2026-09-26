@@ -13,6 +13,7 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/sirrobot01/decypharr/internal/utils"
 	"github.com/sirrobot01/decypharr/pkg/storage"
+	"github.com/sirrobot01/decypharr/pkg/usenet/manifest"
 	"github.com/sirrobot01/decypharr/pkg/usenet/types"
 	"github.com/sourcegraph/conc/iter"
 )
@@ -88,6 +89,14 @@ type RARArchiveInfo struct {
 	IsDataEncrypted   bool   // File data is encrypted
 	EncryptionKey     []byte // AES-256 key derived from password (32 bytes)
 	Files             []*RARFileEntry
+	// VolumeOrder, when non-nil, gives the true volume order as a permutation of
+	// the input volume positions: VolumeOrder[k] = the input index of the volume
+	// whose true RAR5 volume number is k-th. It is set only when the RAR5
+	// main-header volume numbers establish one unambiguous order, so the caller
+	// can reorder the (otherwise NZB-ordered) volumes/segments to the correct
+	// sequence. Nil means "ordering unknown — keep NZB/upload order" (the safe
+	// default).
+	VolumeOrder []int
 }
 
 // RARFileEntry represents a file within the RAR archive
@@ -180,6 +189,77 @@ func (p *RARParser) Process(ctx context.Context, group *FileGroup, password stri
 	// Check if archive has encrypted headers and we couldn't parse it
 	if archiveInfo.IsHeaderEncrypted && len(archiveInfo.Files) == 0 {
 		return nil, fmt.Errorf("RAR archive has encrypted headers; password required or incorrect")
+	}
+
+	// If parseArchive recovered a TRUE volume order that differs from the NZB
+	// order (obfuscated archive whose volumes were posted out of sequence under
+	// random filenames), reorder everything to that true sequence so the file
+	// assembles correctly. baseSegments/volumeInfos were built in NZB order and
+	// volume parts were stamped with NZB positions. Permute the per-volume
+	// segment runs (each volume keeps exactly the segments and size the parse
+	// used), rebuild the segment index over the new order, and renumber the
+	// parts so the offset map (keyed by PartNumber) and the segment walk agree.
+	// When VolumeOrder is nil we skip all of this and keep the existing,
+	// proven NZB-order behavior.
+	if len(archiveInfo.VolumeOrder) == len(group.Files) && len(group.Files) > 1 && len(volumeInfos) == len(group.Files) {
+		// inverse[nzbIdx] = the volume's position in true order. VolumeOrder
+		// must name every NZB position exactly once.
+		inverse := make([]int, len(group.Files))
+		for i := range inverse {
+			inverse[i] = -1
+		}
+		for truePos, nzbIdx := range archiveInfo.VolumeOrder {
+			if nzbIdx < 0 || nzbIdx >= len(group.Files) || inverse[nzbIdx] != -1 {
+				inverse = nil
+				break
+			}
+			inverse[nzbIdx] = truePos
+		}
+		if inverse != nil {
+			reorderedFiles := make([]manifest.File, len(group.Files))
+			reorderedInfos := make([]storage.ArchiveVolumeInfo, 0, len(volumeInfos))
+			reorderedSegments := make([]storage.NZBSegment, 0, len(baseSegments))
+			for truePos, nzbIdx := range archiveInfo.VolumeOrder {
+				reorderedFiles[truePos] = group.Files[nzbIdx]
+				info := volumeInfos[nzbIdx]
+				start := len(reorderedSegments)
+				reorderedSegments = append(reorderedSegments, baseSegments[info.SegmentStart:info.SegmentEnd]...)
+				info.SegmentStart, info.SegmentEnd = start, len(reorderedSegments)
+				reorderedInfos = append(reorderedInfos, info)
+			}
+			reorderedIndex, err := newSegmentLayout(reorderedSegments)
+			if err != nil {
+				return nil, fmt.Errorf("index reordered RAR source segments: %w", err)
+			}
+			if err := reorderedIndex.validateVolumes(reorderedInfos); err != nil {
+				return nil, fmt.Errorf("validate reordered RAR volume layout: %w", err)
+			}
+			group.Files = reorderedFiles
+			volumeInfos, segmentIndex = reorderedInfos, reorderedIndex
+
+			// Renumber each parsed file's volume parts: a part stamped with NZB
+			// index `nzbIdx` now lives at true position `inverse[nzbIdx]`, which
+			// matches the rebuilt offset map's key for that volume.
+			for _, rarFile := range archiveInfo.Files {
+				if rarFile == nil {
+					continue
+				}
+				for _, vp := range rarFile.VolumeParts {
+					if vp == nil {
+						continue
+					}
+					if vp.PartNumber >= 0 && vp.PartNumber < len(inverse) {
+						vp.PartNumber = inverse[vp.PartNumber]
+					}
+				}
+				if rarFile.VolumeIndex >= 0 && rarFile.VolumeIndex < len(inverse) {
+					rarFile.VolumeIndex = inverse[rarFile.VolumeIndex]
+				}
+			}
+			p.logger.Debug().
+				Int("volumes", len(group.Files)).
+				Msg("RAR volumes reordered to true volume sequence for assembly")
+		}
 	}
 
 	// Build volume offset map
@@ -280,6 +360,8 @@ func (p *RARParser) parseArchive(ctx context.Context, volumes []*types.Volume, p
 		files             []*RARFileEntry
 		isHeaderEncrypted bool
 		encryptionKey     []byte // AES-256 key for encrypted file data
+		volumeNumber      int    // true 0-based volume number from RAR5 main header
+		hasVolumeNumber   bool   // whether volumeNumber was parsed
 		err               error
 	}
 
@@ -335,8 +417,9 @@ func (p *RARParser) parseArchive(ctx context.Context, volumes []*types.Volume, p
 				isEncrypted = result.IsHeaderEncrypted
 				// Store the encryption key from first encrypted volume
 				if len(result.EncryptionKey) > 0 {
-					return volumeResult{index: volIdx, files: volumeFiles, isHeaderEncrypted: isEncrypted, encryptionKey: result.EncryptionKey, err: nil}
+					return volumeResult{index: volIdx, files: volumeFiles, isHeaderEncrypted: isEncrypted, encryptionKey: result.EncryptionKey, volumeNumber: result.VolumeNumber, hasVolumeNumber: result.HasVolumeNumber, err: nil}
 				}
+				return volumeResult{index: volIdx, files: volumeFiles, isHeaderEncrypted: isEncrypted, volumeNumber: result.VolumeNumber, hasVolumeNumber: result.HasVolumeNumber, err: nil}
 			}
 		case RARVersion4:
 			volumeFiles, err = p.parseRAR4Stream(stream, volIdx, vol.Name, vol.Size)
@@ -351,10 +434,117 @@ func (p *RARParser) parseArchive(ctx context.Context, volumes []*types.Volume, p
 		return volumeResult{index: volIdx, files: volumeFiles, isHeaderEncrypted: isEncrypted, err: nil}
 	})
 
-	// Sort results by index to maintain order and collect files
+	// Determine whether we can establish the TRUE volume order from RAR5
+	// main-header volume numbers. Default: keep NZB/upload order (correct for
+	// in-order archives incl .partNN). Override when we can establish a complete,
+	// unambiguous volume numbering — then compute a permutation the caller uses
+	// to reorder the volumes/segments consistently.
+	//
+	// Robustness: the RAR5 format writes the volume number in every volume
+	// except the first ("not present for first volume, 1 for second volume, 2
+	// for third and so on"; observed: 62 of 63 volumes numbered, one without
+	// the bit). Exactly one unnumbered volume is therefore the first volume.
+	// Any more ambiguity than that (2+ unnumbered, duplicates, a numbered
+	// volume claiming 0) → keep NZB order rather than risk corrupting an
+	// archive that currently assembles.
+	var volumeOrder []int
+
+	// Collect successfully-parsed results and partition by whether a volume
+	// number was read.
+	type volEntry struct {
+		idx    int
+		num    int
+		hasNum bool
+	}
+	entries := make([]volEntry, 0, len(results))
+	numbered := 0
+	unnumbered := 0
+	for _, r := range results {
+		if r.err != nil {
+			continue
+		}
+		entries = append(entries, volEntry{idx: r.index, num: r.volumeNumber, hasNum: r.hasVolumeNumber})
+		if r.hasVolumeNumber {
+			numbered++
+		} else {
+			unnumbered++
+		}
+	}
+
+	canOrder := len(entries) > 1 && numbered > 0
+	// Check the numbered volumes are all distinct.
+	if canOrder {
+		seen := make(map[int]bool, len(entries))
+		for _, e := range entries {
+			if !e.hasNum {
+				continue
+			}
+			if seen[e.num] {
+				canOrder = false // duplicate volume numbers — unreliable
+				break
+			}
+			seen[e.num] = true
+		}
+	}
+	// Resolve the unnumbered volume: exactly one is the first volume and sorts
+	// before the numbered ones, which start at 1. A gap in the numbered run
+	// means a volume is absent from this group; it does not change where the
+	// first volume goes.
+	if canOrder && unnumbered > 0 {
+		minNum := -1
+		for _, e := range entries {
+			if e.hasNum && (minNum == -1 || e.num < minNum) {
+				minNum = e.num
+			}
+		}
+		if unnumbered != 1 || minNum < 1 {
+			canOrder = false // more than one unnumbered volume, or a numbered one claims to be first
+		} else {
+			for i := range entries {
+				if !entries[i].hasNum {
+					entries[i].num = 0
+					entries[i].hasNum = true
+					break
+				}
+			}
+			p.logger.Debug().
+				Int("inferred_volnum", 0).
+				Msg("RAR volume order: the one volume without a volume number is the first volume")
+		}
+	}
+
+	// Sort results by index to maintain NZB/upload order and collect files.
+	// (Internal coordinate systems — baseSegments, volumeOffsetMap — are built
+	// in this same NZB order by the caller, so we keep it here for consistency
+	// and hand back VolumeOrder for the caller to reorder everything together.)
 	sort.Slice(results, func(i, j int) bool {
 		return results[i].index < results[j].index
 	})
+
+	if canOrder {
+		// Build permutation: position k in true order ← the input index whose
+		// volume number is the k-th smallest.
+		sort.Slice(entries, func(i, j int) bool { return entries[i].num < entries[j].num })
+		volumeOrder = make([]int, 0, len(entries))
+		for _, e := range entries {
+			volumeOrder = append(volumeOrder, e.idx)
+		}
+		// If the permutation is identity, leave it nil (nothing to reorder).
+		identity := len(volumeOrder) == len(results)
+		for k, idx := range volumeOrder {
+			if k != idx {
+				identity = false
+				break
+			}
+		}
+		if identity {
+			volumeOrder = nil
+		} else {
+			p.logger.Debug().
+				Int("volumes", len(volumeOrder)).
+				Msg("RAR volume order recovered from RAR5 main-header volume numbers (differs from NZB order)")
+		}
+	}
 
 	var allRawFiles []*RARFileEntry
 	isHeaderEncrypted := false
@@ -401,6 +591,7 @@ func (p *RARParser) parseArchive(ctx context.Context, volumes []*types.Volume, p
 		IsDataEncrypted:   len(encryptionKey) > 0,
 		EncryptionKey:     encryptionKey,
 		Files:             files,
+		VolumeOrder:       volumeOrder,
 	}
 	return archiveInfo, nil
 }

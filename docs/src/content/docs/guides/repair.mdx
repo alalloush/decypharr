@@ -207,6 +207,8 @@ Example payload:
 }
 ```
 
+The payload must include `media_id`, `tmdb_id` or `tvdb_id`. A payload without one is rejected with `400`; the webhook never starts a full sweep.
+
 ## Browse page
 
 Each entry row carries a health badge whose colour reflects the current status (healthy / broken / repairing / unknown / stale / unsupported). Hovering shows the last-checked time, broken-file count, and top failure reason. The row's action menu has **Recheck health**, and clicking the badge opens a side panel listing every broken file with its reason and Arr link.

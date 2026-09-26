@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	debrid "github.com/sirrobot01/decypharr/pkg/debrid/common"
@@ -224,6 +225,9 @@ func (m *Manager) getEntryChildren(group string) (*FileInfo, []FileInfo) {
 		var infos []FileInfo
 		seen := make(map[string]struct{})
 		err := m.storage.ForEachMeta(func(meta *storage.EntryMetaInfo) error {
+			if !isListableEntryMeta(meta) {
+				return nil
+			}
 			if _, ok := seen[meta.Name]; ok {
 				return nil
 			}
@@ -250,6 +254,9 @@ func (m *Manager) getEntryChildren(group string) (*FileInfo, []FileInfo) {
 		var infos []FileInfo
 		seen := make(map[string]struct{})
 		err := m.storage.ForEachMeta(func(meta *storage.EntryMetaInfo) error {
+			if !isListableEntryMeta(meta) {
+				return nil
+			}
 			if meta.Protocol == "torrent" {
 				if _, ok := seen[meta.Name]; ok {
 					return nil
@@ -278,6 +285,9 @@ func (m *Manager) getEntryChildren(group string) (*FileInfo, []FileInfo) {
 		var infos []FileInfo
 		seen := make(map[string]struct{})
 		err := m.storage.ForEachMeta(func(meta *storage.EntryMetaInfo) error {
+			if !isListableEntryMeta(meta) {
+				return nil
+			}
 			if meta.Protocol == "nzb" {
 				if _, ok := seen[meta.Name]; ok {
 					return nil
@@ -306,6 +316,9 @@ func (m *Manager) getEntryChildren(group string) (*FileInfo, []FileInfo) {
 		var infos []FileInfo
 		seen := make(map[string]struct{})
 		err := m.storage.ForEachMeta(func(meta *storage.EntryMetaInfo) error {
+			if !isListableEntryMeta(meta) {
+				return nil
+			}
 			if meta.Bad {
 				if _, ok := seen[meta.Name]; ok {
 					return nil
@@ -341,6 +354,9 @@ func (m *Manager) getEntryChildren(group string) (*FileInfo, []FileInfo) {
 			var infos []FileInfo
 			seen := make(map[string]struct{})
 			err := m.storage.ForEachMeta(func(meta *storage.EntryMetaInfo) error {
+				if !isListableEntryMeta(meta) {
+					return nil
+				}
 				if meta.Provider == group {
 					if _, ok := seen[meta.Name]; ok {
 						return nil
@@ -408,6 +424,16 @@ func (m *Manager) getTorrentChildren(name string) (*FileInfo, []FileInfo) {
 		kind:    EntryKindEntry,
 	}
 	return currentDir, infos
+}
+
+func isListableEntryMeta(meta *storage.EntryMetaInfo) bool {
+	if meta == nil || meta.Name == "" || meta.Name == "." || meta.Name == ".." ||
+		strings.HasPrefix(meta.InfoHash, "__") ||
+		strings.Contains(meta.Name, "/") ||
+		strings.ContainsRune(meta.Name, 0) {
+		return false
+	}
+	return true
 }
 
 func (m *Manager) RemoveEntry(entry *FileInfo) error {
@@ -490,6 +516,9 @@ func (m *Manager) getVirtualFolderChildren(virtualFolders *virtualfolders.Folder
 	var infos []FileInfo
 	seen := make(map[string]struct{})
 	err := m.storage.ForEachMeta(func(meta *storage.EntryMetaInfo) error {
+		if !isListableEntryMeta(meta) {
+			return nil
+		}
 		if virtualFolders.Matches(folder, meta, m.virtualFolderFileNames(meta)) {
 			if _, ok := seen[meta.Name]; ok {
 				return nil
