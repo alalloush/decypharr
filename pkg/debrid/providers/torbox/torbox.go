@@ -49,6 +49,9 @@ type Torbox struct {
 	downloadPresentCache  sync.Map
 	downloadPresentMu     sync.Mutex
 	downloadPresentLoaded bool
+	// usenet items (see usenet.go)
+	usenetHashes  sync.Map // lowercase hash -> struct{}
+	usenetPresent sync.Map // bare usenet id -> download_present
 }
 
 func New(dc config.Debrid, ratelimits map[string]ratelimit.Limiter) (*Torbox, error) {
@@ -185,6 +188,13 @@ func (tb *Torbox) doPostJSON(endpoint string, payload any, result any) (*http.Re
 }
 
 func (tb *Torbox) IsAvailable(hashes []string) (map[string]bool, error) {
+	return tb.checkCached(tb.client, hashes)
+}
+
+// checkCached asks /torrents/checkcached about hashes, 100 per request, through
+// client. It keeps IsAvailable's contract: a missing key means the hash was not
+// checked, never that it is uncached.
+func (tb *Torbox) checkCached(client *request.Client, hashes []string) (map[string]bool, error) {
 	result := make(map[string]bool)
 
 	for i := 0; i < len(hashes); i += 100 {
@@ -204,7 +214,7 @@ func (tb *Torbox) IsAvailable(hashes []string) (map[string]bool, error) {
 		hashStr := strings.Join(validHashes, ",")
 		var res AvailableResponse
 
-		resp, err := tb.doGet("/api/torrents/checkcached", map[string]string{"hash": hashStr}, &res)
+		resp, err := tb.doGetWithClient(context.Background(), client, "/api/torrents/checkcached", map[string]string{"hash": hashStr}, &res)
 		if err != nil {
 			return result, fmt.Errorf("check availability: %w", err)
 		}
@@ -228,6 +238,9 @@ func (tb *Torbox) IsAvailable(hashes []string) (map[string]bool, error) {
 }
 
 func (tb *Torbox) SubmitMagnet(torrent *types.Torrent) (*types.Torrent, error) {
+	if tb.isKnownUsenetHash(torrent.InfoHash) {
+		return nil, fmt.Errorf("%s is a TorBox usenet item and cannot be re-added from a magnet; re-grab it from the *arr instead", torrent.Name)
+	}
 	var data AddMagnetResponse
 
 	formData := map[string]string{
@@ -235,6 +248,22 @@ func (tb *Torbox) SubmitMagnet(torrent *types.Torrent) (*types.Torrent, error) {
 	}
 	if !torrent.DownloadUncached {
 		formData["add_only_if_cached"] = "true"
+
+		// Ask the cache before calling createtorrent. When a release is not
+		// cached TorBox does not reply with a refusal, it does not reply at
+		// all: the request wrapper then burns ResponseHeaderTimeout (30s) per
+		// attempt and retries cfg.Retries times, so one uncached grab can cost
+		// around two minutes. The calling *arr times out well before that and
+		// records the failure against the INDEXER, which it eventually
+		// disables, for a release the indexer served perfectly well.
+		// Failing fast keeps the refusal cheap and keeps the blame off the
+		// indexer. Only a definite miss refuses: a failed probe or an unchecked
+		// (empty) hash falls through to the previous behaviour. The probe uses
+		// the submission lane so it does not queue behind list refreshes.
+		probe, err := tb.checkCached(tb.submissionClient(), []string{torrent.InfoHash})
+		if cached, checked := probe[torrent.InfoHash]; err == nil && checked && !cached {
+			return nil, fmt.Errorf("torrent %s: %w", torrent.Name, customerror.TorrentNotCachedError)
+		}
 	}
 
 	resp, err := tb.doPostFormWithClient(tb.submissionClient(), "/api/torrents/createtorrent", formData, &data)
@@ -276,6 +305,9 @@ func (tb *Torbox) getTorboxStatus(status string, finished bool) types.TorrentSta
 }
 
 func (tb *Torbox) GetTorrent(torrentId string) (*types.Torrent, error) {
+	if uid, ok := usenetID(torrentId); ok {
+		return tb.getUsenetTorrent(uid)
+	}
 	var res InfoResponse
 
 	resp, err := tb.doGet("/api/torrents/mylist", map[string]string{"id": torrentId}, &res)
@@ -366,6 +398,23 @@ func (tb *Torbox) loadDownloadPresent(ctx context.Context) error {
 }
 
 func (tb *Torbox) UpdateTorrent(t *types.Torrent) error {
+	if uid, ok := usenetID(t.Id); ok {
+		u, err := tb.getUsenetTorrent(uid)
+		if err != nil {
+			return err
+		}
+		t.Name = u.Name
+		t.Bytes = u.Bytes
+		t.Progress = u.Progress
+		t.Status = u.Status
+		t.Speed = u.Speed
+		t.Filename = u.Filename
+		t.OriginalFilename = u.OriginalFilename
+		t.InfoHash = u.InfoHash
+		t.Debrid = u.Debrid
+		t.Files = u.Files
+		return nil
+	}
 	return tb.updateTorrentWithClient(tb.client, t)
 }
 
@@ -458,6 +507,10 @@ func (tb *Torbox) CheckStatus(torrent *types.Torrent) (*types.Torrent, error) {
 }
 
 func (tb *Torbox) DeleteTorrent(torrentId string) error {
+	if _, ok := usenetID(torrentId); ok {
+		tb.logger.Warn().Str("id", torrentId).Msg("refusing to delete a TorBox usenet item: decypharr cannot recreate it")
+		return nil
+	}
 	id, err := strconv.Atoi(torrentId)
 	if err != nil {
 		return fmt.Errorf("invalid TorBox torrent id %q: %w", torrentId, err)
@@ -488,30 +541,56 @@ func (tb *Torbox) GetDownloadLink(ctx context.Context, id string, file *types.Fi
 	return tb.accountsManager.GetDownloadLink(ctx, id, file, tb.fetchDownloadLink)
 }
 
+// cdnLinkLifetime bounds how long a resolved CDN URL is reused. TorBox documents
+// requestdl as opening a link "for 3 hours" and, in the same paragraph, a
+// "1 hour time limit ... for starting downloads". Every range request starts a
+// new download, so reuse a URL for at most an hour. The link service refetches
+// a URL the CDN rejects earlier.
+const cdnLinkLifetime = time.Hour
+
+// fetchDownloadLink resolves the file's CDN URL once, for reuse by every range
+// request until it expires. The redirect=true permalink would cost one
+// requestdl call per connection (each open, seek and reconnect), which runs
+// into TorBox's 300 requests/min limit while streaming or scanning a library.
+// Usenet items (see usenet.go) resolve through /usenet/requestdl the same way.
 func (tb *Torbox) fetchDownloadLink(ctx context.Context, account *account.Account, id string, file *types.File) (types.DownloadLink, error) {
-	query := url.Values{}
-	query.Set("token", account.Token)
-	query.Set("torrent_id", id)
-	query.Set("file_id", file.Id)
-	query.Set("redirect", "true")
+	endpoint, params := "/api/torrents/requestdl", map[string]string{"torrent_id": id}
+	if uid, ok := usenetID(id); ok {
+		endpoint, params = "/api/usenet/requestdl", map[string]string{"usenet_id": uid}
+	}
+	params["token"] = account.Token
+	params["file_id"] = file.Id
 
-	downloadURL := fmt.Sprintf("%s/api/torrents/requestdl?%s", tb.Host, query.Encode())
+	var res DownloadLinksResponse
+	resp, err := tb.doGetWithClient(ctx, account.Client(), endpoint, params, &res)
+	if err != nil {
+		return types.DownloadLink{}, fmt.Errorf("torbox requestdl: %w", err)
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return types.DownloadLink{}, fmt.Errorf("torbox requestdl: HTTP %d", resp.StatusCode)
+	}
+	if !res.Success || res.Data == nil || *res.Data == "" {
+		return types.DownloadLink{}, fmt.Errorf("torbox requestdl returned no link: %v %s", res.Error, res.Detail)
+	}
 
+	lifetime := cdnLinkLifetime
+	if tb.autoExpiresLinksAfter > 0 && tb.autoExpiresLinksAfter < lifetime {
+		lifetime = tb.autoExpiresLinksAfter
+	}
 	now := time.Now()
-
-	// Always expires
-	dl := types.DownloadLink{
-		Filename:     file.Name,
-		Size:         file.Size,
-		Token:        tb.APIKey,
+	return types.DownloadLink{
+		Filename: file.Name,
+		Size:     file.Size,
+		// The account that fetched the link caches it; DeleteLink and account
+		// disabling look the account up by this token.
+		Token:        account.Token,
 		Link:         file.Link,
-		DownloadLink: downloadURL,
+		DownloadLink: *res.Data,
 		Debrid:       tb.config.Name,
 		Id:           file.Id,
 		Generated:    now,
-		ExpiresAt:    now.Add(tb.autoExpiresLinksAfter),
-	}
-	return dl, nil
+		ExpiresAt:    now.Add(lifetime),
+	}, nil
 }
 
 func (tb *Torbox) GetTorrents() ([]*types.Torrent, error) {
@@ -529,6 +608,11 @@ func (tb *Torbox) GetTorrents() ([]*types.Torrent, error) {
 		allTorrents = append(allTorrents, torrents...)
 		offset += len(torrents)
 	}
+	usenetItems, err := tb.getAllUsenet()
+	if err != nil {
+		return nil, err
+	}
+	allTorrents = append(allTorrents, usenetItems...)
 	return allTorrents, nil
 }
 
@@ -642,6 +726,17 @@ func (tb *Torbox) CheckFile(ctx context.Context, infohash, link string) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+	if uid, ok := usenetID(torrentID); ok {
+		present, err := tb.usenetPresentFor(uid)
+		if err != nil {
+			return err
+		}
+		if !present {
+			return customerror.HosterUnavailableError
+		}
+		return nil
+	}
+
 	if present, ok := tb.downloadPresentCache.Load(torrentID); ok {
 		if !present.(bool) {
 			return customerror.HosterUnavailableError

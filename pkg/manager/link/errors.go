@@ -100,6 +100,7 @@ var (
 	ErrPlacementNotFound   = errors.New("placement not found for entry")
 	ErrFileMissing         = errors.New("file missing in entry")
 	ErrEmptyLink           = errors.New("download link is empty")
+	ErrRefetchCooldown     = errors.New("link refetch on cooldown after a failed validation")
 )
 
 // HTTP error sentinels
@@ -107,6 +108,9 @@ var (
 	Err404 = errors.New("HTTP 404 Not Found")
 	Err429 = errors.New("HTTP 429 Too Many Requests")
 	Err503 = errors.New("HTTP 503 Service Unavailable")
+	// ErrLinkRejected is a 400 from the provider/CDN, which in practice means
+	// the presigned link expired or rotated rather than a malformed request.
+	ErrLinkRejected = errors.New("HTTP 400: link rejected")
 )
 
 // NewLinkError creates a new LinkError with the given error and category
@@ -154,13 +158,37 @@ func ErrorCodeToLinkError(code string) *Error {
 	case "401", "unauthorized":
 		return NewPermanentError(ErrUnauthorized, code)
 	case "404":
-		return NewPermanentError(Err404, code)
+		// CDN 404 during validation means the URL is not yet active or has expired,
+		// not that the file is permanently gone. Refetch so a fresh CDN URL is
+		// generated — the prior URL may have been fetched before the file was ready.
+		// The service's refetch cooldown bounds this for a file that stays 404.
+		return NewRefetchableError(Err404, code)
 	case "429":
 		return NewRetryableError(Err429, code)
+	// Some providers (TorBox) return a bare 400 for a presigned link that has
+	// expired or rotated. ClassifyStreamStatus already treats 400 at the CDN
+	// layer as refetchable; the provider-API path must agree, otherwise a stale
+	// link is classified permanent, fast-trips the VFS circuit breaker
+	// (errorCount = maxErrorCount) and the file reads 0 bytes until cooldown
+	// instead of simply refetching the link.
+	case "400":
+		return NewRefetchableError(ErrLinkRejected, code)
+	// Transient provider codes must not be permanent. fetchAndValidate memoises
+	// a permanent failure against the download URL; for providers whose URL is
+	// deterministic that key never rotates, so one 502 would leave the file
+	// unreadable until the memo is cleared or the process restarts. Retryable
+	// and refetchable failures are refetched instead and never memoised.
 	case "503", "read_pxy_timeout":
 		return NewRetryableError(Err503, code)
+	case "500", "502", "504":
+		return NewRetryableError(fmt.Errorf("HTTP %s from provider", code), code)
 	default:
-		return NewPermanentError(fmt.Errorf("unknown error code: %s", code), code)
+		// An unrecognised code is not evidence of permanent failure. Treating it
+		// as permanent means one transient 400 poisons the file until restart,
+		// which is what users see as "playback works, then stops until I
+		// restart the container". Allow a refetch instead, which also clears any
+		// poisoned cache entry.
+		return NewRefetchableError(fmt.Errorf("unknown error code: %s", code), code)
 	}
 }
 
