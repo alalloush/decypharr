@@ -31,6 +31,8 @@ func TestSubmissionRequestsUseDedicatedClient(t *testing.T) {
 
 		w.Header().Set("Content-Type", "application/json")
 		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/api/torrents/checkcached":
+			_, _ = fmt.Fprint(w, `{"success":true,"data":{"abc":{"name":"Release.mkv","size":100,"hash":"abc"}}}`)
 		case r.Method == http.MethodPost && r.URL.Path == "/api/torrents/createtorrent":
 			_, _ = fmt.Fprint(w, `{"success":true,"data":{"torrent_id":17,"hash":"ABC"}}`)
 		case r.Method == http.MethodGet && r.URL.Path == "/api/torrents/mylist":
@@ -51,8 +53,10 @@ func TestSubmissionRequestsUseDedicatedClient(t *testing.T) {
 		request.WithMaxRetries(0),
 	)
 
+	// The cache probe that precedes createtorrent must ride the same lane.
 	torrent := &types.Torrent{
-		Magnet: &utils.Magnet{Link: "magnet:?xt=urn:btih:ABC"},
+		InfoHash: "ABC",
+		Magnet:   &utils.Magnet{Link: "magnet:?xt=urn:btih:ABC"},
 	}
 	added, err := tb.SubmitMagnet(torrent)
 	if err != nil {
@@ -64,7 +68,7 @@ func TestSubmissionRequestsUseDedicatedClient(t *testing.T) {
 
 	mu.Lock()
 	defer mu.Unlock()
-	if !slices.Equal(lanes, []string{"submit", "submit"}) {
+	if !slices.Equal(lanes, []string{"submit", "submit", "submit"}) {
 		t.Fatalf("request lanes = %v, want dedicated submission lane", lanes)
 	}
 }

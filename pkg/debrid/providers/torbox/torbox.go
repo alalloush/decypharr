@@ -185,6 +185,13 @@ func (tb *Torbox) doPostJSON(endpoint string, payload any, result any) (*http.Re
 }
 
 func (tb *Torbox) IsAvailable(hashes []string) (map[string]bool, error) {
+	return tb.checkCached(tb.client, hashes)
+}
+
+// checkCached asks /torrents/checkcached about hashes, 100 per request, through
+// client. It keeps IsAvailable's contract: a missing key means the hash was not
+// checked, never that it is uncached.
+func (tb *Torbox) checkCached(client *request.Client, hashes []string) (map[string]bool, error) {
 	result := make(map[string]bool)
 
 	for i := 0; i < len(hashes); i += 100 {
@@ -204,7 +211,7 @@ func (tb *Torbox) IsAvailable(hashes []string) (map[string]bool, error) {
 		hashStr := strings.Join(validHashes, ",")
 		var res AvailableResponse
 
-		resp, err := tb.doGet("/api/torrents/checkcached", map[string]string{"hash": hashStr}, &res)
+		resp, err := tb.doGetWithClient(context.Background(), client, "/api/torrents/checkcached", map[string]string{"hash": hashStr}, &res)
 		if err != nil {
 			return result, fmt.Errorf("check availability: %w", err)
 		}
@@ -235,6 +242,22 @@ func (tb *Torbox) SubmitMagnet(torrent *types.Torrent) (*types.Torrent, error) {
 	}
 	if !torrent.DownloadUncached {
 		formData["add_only_if_cached"] = "true"
+
+		// Ask the cache before calling createtorrent. When a release is not
+		// cached TorBox does not reply with a refusal, it does not reply at
+		// all: the request wrapper then burns ResponseHeaderTimeout (30s) per
+		// attempt and retries cfg.Retries times, so one uncached grab can cost
+		// around two minutes. The calling *arr times out well before that and
+		// records the failure against the INDEXER, which it eventually
+		// disables, for a release the indexer served perfectly well.
+		// Failing fast keeps the refusal cheap and keeps the blame off the
+		// indexer. Only a definite miss refuses: a failed probe or an unchecked
+		// (empty) hash falls through to the previous behaviour. The probe uses
+		// the submission lane so it does not queue behind list refreshes.
+		probe, err := tb.checkCached(tb.submissionClient(), []string{torrent.InfoHash})
+		if cached, checked := probe[torrent.InfoHash]; err == nil && checked && !cached {
+			return nil, fmt.Errorf("torrent %s: %w", torrent.Name, customerror.TorrentNotCachedError)
+		}
 	}
 
 	resp, err := tb.doPostFormWithClient(tb.submissionClient(), "/api/torrents/createtorrent", formData, &data)
