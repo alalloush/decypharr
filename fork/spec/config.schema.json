@@ -1,0 +1,992 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/alalloush/decypharr/blob/dev/fork/spec/config.schema.json",
+  "$defs": {
+    "Arr": {
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "host": {
+          "type": "string"
+        },
+        "token": {
+          "type": "string",
+          "format": "password",
+          "writeOnly": true
+        },
+        "skip_repair": {
+          "type": "boolean"
+        },
+        "download_uncached": {
+          "type": "boolean"
+        },
+        "selected_debrid": {
+          "type": "string"
+        },
+        "source": {
+          "type": "string",
+          "description": "The source of the arr, e.g. \"auto\", \"config\", \"\". Auto means it was automatically detected from the arr"
+        }
+      },
+      "type": "object"
+    },
+    "CustomFolders": {
+      "properties": {
+        "filters": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        }
+      },
+      "type": "object"
+    },
+    "DFS": {
+      "properties": {
+        "cache_expiry": {
+          "type": "string",
+          "description": "1h, 30m etc"
+        },
+        "cache_dir": {
+          "type": "string",
+          "description": "/tmp/decypharr-cache"
+        },
+        "disk_cache_size": {
+          "type": "string",
+          "description": "10GB, 50GB etc"
+        },
+        "cache_cleanup_interval": {
+          "type": "string",
+          "description": "10m, 1h etc"
+        },
+        "buffer_memory": {
+          "type": "string",
+          "description": "BufferMemory caps the total RAM the DFS streaming buffers hold across all\nopen files, e.g. \"512MB\". Reads are served from this window, so it is\nwhat keeps playback off the disk; per-file windows are sized from\nread_ahead_size and share this budget when several streams are open.\nEmpty = default (512MB); \"0\" disables the cap."
+        },
+        "chunk_size": {
+          "type": "string",
+          "description": "Initial chunk size, e.g 10MB"
+        },
+        "read_ahead_size": {
+          "type": "string",
+          "description": "Read ahead size (deprecated, use MaxChunkSize)"
+        },
+        "drop_behind_margin": {
+          "type": "string",
+          "description": "DropBehindMargin, e.g \"256MB\", makes the read path drop the page cache for\nstreamed data more than this far behind the read head (bytes stay on disk).\nEmpty/0 = disabled. Linux only; only useful under a tight memory cap."
+        },
+        "daemon_timeout": {
+          "type": "string",
+          "description": "Time after which the FUSE daemon will exit if idle"
+        },
+        "fuse_max_background": {
+          "type": "integer",
+          "description": "FuseMaxBackground caps how many background FUSE requests (readahead,\nasync reads) the kernel keeps in flight. Kernel default is 12, which\nthrottles streaming readahead; DFS defaults to 64. 0 = default."
+        },
+        "fuse_max_read_ahead": {
+          "type": "string",
+          "description": "FuseMaxReadAhead is the readahead window advertised to the kernel,\ne.g. \"1MB\". Empty = DFS default (1MB)."
+        },
+        "uid": {
+          "type": "integer",
+          "description": "User ID for mounted files"
+        },
+        "gid": {
+          "type": "integer",
+          "description": "Group ID for mounted files"
+        },
+        "umask": {
+          "type": "string",
+          "description": "File permissions mask"
+        }
+      },
+      "type": "object"
+    },
+    "Debrid": {
+      "properties": {
+        "provider": {
+          "type": "string",
+          "description": "realdebrid, alldebrid, debridlink, torbox, premiumize"
+        },
+        "name": {
+          "type": "string"
+        },
+        "api_key": {
+          "type": "string",
+          "format": "password",
+          "writeOnly": true
+        },
+        "download_api_keys": {
+          "items": {
+            "type": "string",
+            "format": "password"
+          },
+          "type": "array",
+          "writeOnly": true
+        },
+        "download_uncached": {
+          "type": "boolean"
+        },
+        "rate_limit": {
+          "type": "string",
+          "description": "200/minute or 10/second"
+        },
+        "repair_rate_limit": {
+          "type": "string"
+        },
+        "download_rate_limit": {
+          "type": "string"
+        },
+        "proxy": {
+          "type": "string"
+        },
+        "unpack_rar": {
+          "type": "boolean"
+        },
+        "minimum_free_slot": {
+          "type": "integer",
+          "description": "Minimum active pots to use this debrid"
+        },
+        "limit": {
+          "type": "integer",
+          "description": "Maximum number of total torrents"
+        },
+        "torrents_refresh_interval": {
+          "type": "string"
+        },
+        "download_links_refresh_interval": {
+          "type": "string"
+        },
+        "workers": {
+          "type": "integer"
+        },
+        "auto_expire_links_after": {
+          "type": "string"
+        },
+        "user_agent": {
+          "type": "string"
+        },
+        "api_host": {
+          "type": "string",
+          "description": "APIHost overrides the provider's API base URL: scheme, host and version\npath, e.g. https://api.real-debrid.com/rest/1.0. Empty uses the\nprovider's public API. Meant for tests and fake providers."
+        },
+        "folder": {
+          "type": "string",
+          "description": "Deprecated. Use Mount MountPath instead.",
+          "deprecated": true
+        },
+        "folder_naming": {
+          "type": "string",
+          "description": "Deprecated. Use global setting instead.",
+          "deprecated": true
+        },
+        "rc_url": {
+          "type": "string",
+          "description": "Deprecated. Use global setting instead.",
+          "deprecated": true
+        },
+        "rc_user": {
+          "type": "string",
+          "description": "Deprecated. Use global setting instead.",
+          "deprecated": true
+        },
+        "rc_pass": {
+          "type": "string",
+          "format": "password",
+          "description": "Deprecated. Use global setting instead.",
+          "deprecated": true,
+          "writeOnly": true
+        },
+        "rc_refresh_dirs": {
+          "type": "string",
+          "description": "Deprecated. Use global setting instead.",
+          "deprecated": true
+        },
+        "directories": {
+          "additionalProperties": {
+            "$ref": "#/$defs/WebdavDirectories"
+          },
+          "type": "object",
+          "description": "Directories\n\nDeprecated. Use global setting instead.",
+          "deprecated": true
+        }
+      },
+      "type": "object"
+    },
+    "ExternalRclone": {
+      "properties": {
+        "rc_url": {
+          "type": "string"
+        },
+        "rc_username": {
+          "type": "string"
+        },
+        "rc_password": {
+          "type": "string",
+          "format": "password",
+          "writeOnly": true
+        }
+      },
+      "type": "object"
+    },
+    "Hearsay": {
+      "properties": {
+        "disabled": {
+          "type": "boolean"
+        },
+        "participate": {
+          "type": "boolean"
+        },
+        "publish": {
+          "type": "boolean"
+        },
+        "advice_mode": {
+          "type": "string"
+        },
+        "min_support": {
+          "type": "number"
+        },
+        "min_evidence": {
+          "type": "number"
+        },
+        "min_sources": {
+          "type": "integer"
+        },
+        "port": {
+          "type": "integer"
+        },
+        "gossip_port": {
+          "type": "integer"
+        },
+        "interval": {
+          "type": "string"
+        },
+        "max_storage_bytes": {
+          "type": "integer"
+        },
+        "max_feeds_per_namespace": {
+          "type": "integer"
+        },
+        "max_seeded_torrents": {
+          "type": "integer"
+        },
+        "follow": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "Mount": {
+      "properties": {
+        "type": {
+          "type": "string"
+        },
+        "mount_path": {
+          "type": "string"
+        },
+        "rclone": {
+          "$ref": "#/$defs/Rclone"
+        },
+        "dfs": {
+          "$ref": "#/$defs/DFS"
+        },
+        "external_rclone": {
+          "$ref": "#/$defs/ExternalRclone"
+        }
+      },
+      "type": "object"
+    },
+    "NFS": {
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "bind_address": {
+          "type": "string"
+        },
+        "port": {
+          "type": "integer"
+        },
+        "allowed_networks": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object",
+      "description": "NFS configures the read-only NFSv4 server. NFS is a thin protocol adapter\nover the catalog (like WebDAV); reads go through the shared on-disk cache,\nconfigured once in ShareCache because SMB uses the same one. NFSv4 is a\nsingle listener: no mount service, portmapper, or advertised ports."
+    },
+    "Notifications": {
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Enabled controls whether notifications are globally enabled"
+        },
+        "webhook_url": {
+          "type": "string",
+          "format": "password",
+          "description": "WebhookURL is the Discord webhook URL for sending notifications",
+          "writeOnly": true
+        },
+        "callback_url": {
+          "type": "string",
+          "description": "CallbackURL is an HTTP endpoint for status callbacks"
+        },
+        "events": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array",
+          "description": "Events is a list of enabled notification events\nIf empty, all events are enabled"
+        }
+      },
+      "type": "object",
+      "description": "Notifications holds all notification configuration"
+    },
+    "QBitTorrent": {
+      "properties": {
+        "download_folder": {
+          "type": "string"
+        },
+        "categories": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "refresh_interval": {
+          "type": "integer"
+        },
+        "skip_pre_cache": {
+          "type": "boolean"
+        },
+        "always_rm_tracker_urls": {
+          "type": "boolean"
+        }
+      },
+      "type": "object",
+      "description": "QBitTorrent is deprecated. Use Manager instead.\nKept for backward compatibility with existing configs."
+    },
+    "QueueCleanup": {
+      "properties": {
+        "rules": {
+          "items": {
+            "$ref": "#/$defs/QueueCleanupRule"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object",
+      "description": "QueueCleanup is the global policy that drives CleanupQueue. It maps\nSonarr/Radarr queue warnings/errors to an action."
+    },
+    "QueueCleanupRule": {
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "catalog key; \"\" = user custom rule"
+        },
+        "match": {
+          "type": "string",
+          "description": "custom: substring; catalog: display text"
+        },
+        "action": {
+          "type": "string",
+          "description": "\"\" (ignore) | \"import\" | \"blacklist\" | \"blacklist_research\""
+        }
+      },
+      "type": "object",
+      "description": "QueueCleanupRule maps a queue issue to a cleanup action.\n\nCatalog rules carry a non-empty ID whose match semantics are hardcoded in the\narr package (keyed by ID) — for these the user only customizes Action, and\nMatch is informational/display only. Custom rules have an empty ID and match\nMatch as a case-insensitive substring of the queue item's statusMessages text."
+    },
+    "Rclone": {
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "mount_path": {
+          "type": "string"
+        },
+        "port": {
+          "type": "string"
+        },
+        "cache_dir": {
+          "type": "string",
+          "description": "Cache settings"
+        },
+        "vfs_cache_mode": {
+          "type": "string",
+          "description": "off, minimal, writes, full"
+        },
+        "vfs_cache_max_age": {
+          "type": "string",
+          "description": "Maximum age of objects in the cache (default 1h)"
+        },
+        "vfs_disk_space_total": {
+          "type": "string",
+          "description": "Total disk space available for the cache (default off)"
+        },
+        "vfs_cache_max_size": {
+          "type": "string",
+          "description": "Maximum size of the cache (default off)"
+        },
+        "vfs_cache_poll_interval": {
+          "type": "string",
+          "description": "How often to poll for changes (default 1m)"
+        },
+        "vfs_read_chunk_size": {
+          "type": "string",
+          "description": "Read chunk size (default 128M)"
+        },
+        "vfs_read_chunk_size_limit": {
+          "type": "string",
+          "description": "Max chunk size (default off)"
+        },
+        "vfs_read_ahead": {
+          "type": "string",
+          "description": "read ahead size"
+        },
+        "buffer_size": {
+          "type": "string",
+          "description": "Buffer size for reading files (default 16M)"
+        },
+        "bw_limit": {
+          "type": "string",
+          "description": "Bandwidth limit (default off)"
+        },
+        "vfs_cache_min_free_space": {
+          "type": "string"
+        },
+        "vfs_fast_fingerprint": {
+          "type": "boolean"
+        },
+        "vfs_read_chunk_streams": {
+          "type": "integer"
+        },
+        "async_read": {
+          "type": "boolean",
+          "description": "Use async read for files"
+        },
+        "transfers": {
+          "type": "integer",
+          "description": "Number of transfers to use (default 4)"
+        },
+        "use_mmap": {
+          "type": "boolean"
+        },
+        "uid": {
+          "type": "integer",
+          "description": "User ID for mounted files"
+        },
+        "gid": {
+          "type": "integer",
+          "description": "Group ID for mounted files"
+        },
+        "umask": {
+          "type": "string"
+        },
+        "attr_timeout": {
+          "type": "string",
+          "description": "Attribute cache timeout (default 1s)"
+        },
+        "dir_cache_time": {
+          "type": "string",
+          "description": "Directory cache time (default 5m)"
+        },
+        "no_modtime": {
+          "type": "boolean",
+          "description": "Don't read/write modification time"
+        },
+        "no_checksum": {
+          "type": "boolean",
+          "description": "Don't checksum files on upload"
+        },
+        "log_level": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "RepairConfig": {
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "source": {
+          "type": "string"
+        },
+        "schedule": {
+          "type": "string"
+        },
+        "workers": {
+          "type": "integer"
+        },
+        "nntp_connection_percent": {
+          "type": "integer"
+        },
+        "strategy": {
+          "type": "string"
+        },
+        "recheck_interval": {
+          "type": "string"
+        },
+        "arrs": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "auto_repair": {
+          "type": "boolean"
+        },
+        "verify_content": {
+          "type": "boolean",
+          "description": "VerifyContent makes NZB probes also read each media file's head through\nthe streaming stack and check for a valid container signature, catching\nfiles whose articles exist but were assembled wrong. Costs one article\ndownload per file probed."
+        },
+        "stop_schedule": {
+          "type": "string",
+          "description": "StopSchedule, when set, stops an in-progress repair sweep at this time/interval\n(same formats as Schedule: clock time, cron expression, or duration).\nA repair sweep still running when StopSchedule fires is cancelled before it\nfinishes enumerating/probing every candidate. Empty disables the stop\nschedule entirely - the repair sweep always runs to completion. When a stop\nfires mid-repair-sweep, AutoRepair decides what happens to whatever was\nalready found broken: repaired if true, left alone if false."
+        }
+      },
+      "type": "object",
+      "description": "RepairConfig is the single, global configuration for the health checker.\nWhen Enabled is true, a recurring sweep runs on Schedule and visits only\nentries that are unhealthy, dirty, or older than RecheckInterval."
+    },
+    "SMB": {
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "bind_address": {
+          "type": "string"
+        },
+        "port": {
+          "type": "integer",
+          "description": "Port is the listen port. SMB clients connect to 445; the unprivileged\ndefault suits a container whose host maps 445 onto it."
+        },
+        "share_name": {
+          "type": "string"
+        },
+        "username": {
+          "type": "string",
+          "description": "Username/Password authenticate every session; the server grants no\nanonymous access. The NTLM domain a client sends is ignored."
+        },
+        "password": {
+          "type": "string",
+          "format": "password",
+          "writeOnly": true
+        },
+        "require_signing": {
+          "type": "boolean",
+          "description": "RequireSigning refuses clients that will not sign. Off by default:\nsigning is still used whenever the client asks for it, and mandatory\nsigning costs real CPU at streaming bitrates."
+        },
+        "allowed_networks": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object",
+      "description": "SMB configures the read-only SMB2/SMB3 server. Experimental: facetfs's SMB\npackage has passed Linux client acceptance only, and it does not implement\nSMB encryption — sessions are signed, not private, so serve trusted\nnetworks only. Like NFS, SMB is a thin protocol adapter over the catalog,\nand it reads through the same shared cache (see ShareCache)."
+    },
+    "ShareCache": {
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Enabled turns the cache on. Nil or false streams straight from the\ndebrid with one session per open file."
+        },
+        "dir": {
+          "type": "string",
+          "description": "Dir holds the cached content. Empty = \u003cconfig dir\u003e/share-cache."
+        },
+        "max_size": {
+          "type": "string",
+          "description": "MaxSize bounds cached content on disk, e.g. \"20GB\". Empty = 10GB. The\nbound is soft against files a client currently holds open: the cache\nreclaims inside them by punching holes, which some filesystems refuse."
+        },
+        "max_age": {
+          "type": "string",
+          "description": "MaxAge drops content nothing has read for this long, e.g. \"24h\".\nEmpty = 24h."
+        },
+        "chunk_size": {
+          "type": "string",
+          "description": "ChunkSize is the base backend fetch size, e.g. \"4MB\". It doubles up to\n16x while a stream stays sequential. Empty = 4MB."
+        },
+        "read_ahead": {
+          "type": "string",
+          "description": "ReadAhead is fetched beyond each read, e.g. \"16MB\". Empty = 16MB."
+        }
+      },
+      "type": "object",
+      "description": "ShareCache configures an optional on-disk read cache in front of the NFS and\nSMB servers. One cache serves both: they export the same catalog, and a\nsecond instance over the same directory would fight the first for the same\nfiles.\n\nThe cache exists to reshape backend traffic, not to hold whole files. A\nclient that seeks, or a media scanner that re-reads the same headers on\nevery pass, otherwise costs a fresh debrid session each time. Behind the\ncache the backend sees one sequential stream per file, so a modest budget\nremoves most of the traffic.\n\nIt is off by default: it claims disk the operator did not ask for, and the\nbudget is only advisory on a filesystem that cannot punch holes. Turn it on\ndeliberately, on a filesystem that can spare the space."
+    },
+    "Strm": {
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "path": {
+          "type": "string",
+          "description": "Path is the root of the .strm tree, one folder per entry. Decypharr\nowns this tree completely: files are written, rewritten, and removed\nto match the library."
+        },
+        "secret": {
+          "type": "string",
+          "format": "password",
+          "description": "Secret signs stream URLs (HMAC-SHA256). Generated on first load if\nempty. Rotating it invalidates every written .strm; regenerate after.",
+          "writeOnly": true
+        },
+        "delivery_mode": {
+          "type": "string",
+          "description": "DeliveryMode is how /stream serves bytes: \"proxy\" (default) streams\nthrough decypharr, \"redirect\" 302s to the provider link when possible."
+        },
+        "keep_media_extension": {
+          "type": "boolean",
+          "description": "KeepMediaExtension writes Movie.mkv.strm instead of Movie.strm."
+        },
+        "download_sidecars": {
+          "type": "boolean",
+          "description": "DownloadSidecars downloads small subtitle/nfo files next to the .strm\n(a .strm cannot deliver them). Defaults to true."
+        },
+        "sidecar_max_size": {
+          "type": "string",
+          "description": "SidecarMaxSize caps which files count as sidecars. Defaults to 32MB."
+        }
+      },
+      "type": "object",
+      "description": "Strm configures the .strm export: when enabled, every completed entry gets\na folder of identity-URL .strm files under Path, kept in sync by the\nreconciler and served by the /stream endpoint."
+    },
+    "Usenet": {
+      "properties": {
+        "providers": {
+          "items": {
+            "$ref": "#/$defs/UsenetProvider"
+          },
+          "type": "array",
+          "description": "Usenet provider configurations"
+        },
+        "max_connections": {
+          "type": "integer",
+          "description": "Provider-wide streaming fetch limit (default: 15)"
+        },
+        "processing_max_connections": {
+          "type": "integer",
+          "description": "Maximum concurrent connections per file for parsing and NZB downloads (default: max_connections)"
+        },
+        "read_ahead": {
+          "type": "string",
+          "description": "Bytes to prefetch ahead of streaming reads e.g. \"16MB\", \"32MB\" (default: 16MB)"
+        },
+        "body_pipeline_depth": {
+          "type": "integer",
+          "description": "Speculative BODY commands sent per connection (1 disables, default: 2, max: 4)"
+        },
+        "stream_backup_wait": {
+          "type": "string",
+          "description": "StreamBackupWait optionally permits an urgent playback read to spill to\nthe backup-provider tier after waiting this long for a primary slot.\nEmpty or \"0\" keeps backups completion-only and avoids block-account use."
+        },
+        "socket_read_buffer": {
+          "type": "string",
+          "description": "SocketReadBuffer / SocketWriteBuffer set the per-connection TCP\nSO_RCVBUF / SO_SNDBUF (e.g. \"4MB\"). At high RTT a single connection's\nthroughput is capped at roughly buffer ÷ RTT, so the receive buffer must\ncover the bandwidth-delay product (BDP = link_speed × RTT). \"0\" leaves\nOS autotuning in charge. Note: the OS still caps these\n(Linux net.core.rmem_max/wmem_max, macOS kern.ipc.maxsockbuf) — raise\nthose sysctls too to actually get large windows. Defaults: 4MB / 1MB."
+        },
+        "socket_write_buffer": {
+          "type": "string"
+        },
+        "processing_timeout": {
+          "type": "string",
+          "description": "Processing timeout\n\nTimeout for NZB processing e.g. \"5m\", \"10m\" (default: 10m). Mark as bad if exceeded."
+        },
+        "conn_idle_timeout": {
+          "type": "string",
+          "description": "ConnIdleTimeout is how long an unused pooled NNTP connection is kept\nwarm (and keepalive-pinged) before being closed, e.g. \"5m\". Players\nread in bursts with quiet gaps; closing too early forces a\nTCP+TLS+AUTH reconnect storm on every resume. Default: 5m."
+        },
+        "availability_sample_percent": {
+          "type": "integer",
+          "description": "Percentage of segments to check during repair (1-100, default: 10)"
+        },
+        "import_availability_sample_percent": {
+          "type": "integer",
+          "description": "Percentage of segments to check when adding an NZB (1-100, default: 1)"
+        },
+        "disk_path": {
+          "type": "string",
+          "description": "DiskPath enables disk-backed rewind buffering when non-empty. Empty keeps\nthe bounded streaming window in memory."
+        },
+        "buffer_memory": {
+          "type": "string",
+          "description": "BufferMemory caps resident Usenet extents across open window-mode streams.\nEmpty defaults to 512MB; \"0\" disables the cap."
+        }
+      },
+      "type": "object",
+      "description": "Usenet configuration for usenet streaming and downloading"
+    },
+    "UsenetProvider": {
+      "properties": {
+        "host": {
+          "type": "string",
+          "description": "Host of the usenet server"
+        },
+        "port": {
+          "type": "integer",
+          "description": "Port of the usenet server"
+        },
+        "username": {
+          "type": "string"
+        },
+        "password": {
+          "type": "string",
+          "format": "password",
+          "writeOnly": true
+        },
+        "backbone": {
+          "type": "string",
+          "description": "Shared article backbone identifier used for failover decisions"
+        },
+        "max_connections": {
+          "type": "integer",
+          "description": "Max connections for this provider (default: 10)"
+        },
+        "ssl": {
+          "type": "boolean",
+          "description": "Use SSL/TLS for the connection"
+        },
+        "priority": {
+          "type": "integer",
+          "description": "Priority for this provider (lower = higher priority)"
+        },
+        "backup": {
+          "type": "boolean",
+          "description": "Backup marks this provider as a fallback tier. Backups are only\nconsulted when every non-backup (\"primary\") provider is excluded\n— e.g. all primaries returned article-not-found or had connection\nerrors. They are not used just because a primary's pool is busy unless\nstream_backup_wait explicitly enables urgent playback spillover. This\nmatches the \"unlimited primary + block backup for completion\" model\nthat most other Usenet clients implement, and prevents block providers\nfrom being billed for articles the unlimited could have served."
+        }
+      },
+      "type": "object"
+    },
+    "VirtualFolder": {
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "match": {
+          "type": "string"
+        },
+        "include_bad": {
+          "type": "boolean"
+        },
+        "conditions": {
+          "items": {
+            "$ref": "#/$defs/VirtualFolderCondition"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object",
+      "description": "VirtualFolder is the canonical, ordered representation of a filtered library\nview. CustomFolders above is kept only so older config.json files can be\nmigrated without user intervention."
+    },
+    "VirtualFolderCondition": {
+      "properties": {
+        "field": {
+          "type": "string"
+        },
+        "operator": {
+          "type": "string"
+        },
+        "value": {
+          "type": "string"
+        },
+        "case_sensitive": {
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "WebdavDirectories": {
+      "properties": {
+        "filters": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        }
+      },
+      "type": "object"
+    }
+  },
+  "properties": {
+    "session_secret": {
+      "type": "string",
+      "format": "password",
+      "writeOnly": true
+    },
+    "bind_address": {
+      "type": "string"
+    },
+    "url_base": {
+      "type": "string"
+    },
+    "app_url": {
+      "type": "string"
+    },
+    "port": {
+      "type": "string"
+    },
+    "log_level": {
+      "type": "string"
+    },
+    "debrids": {
+      "items": {
+        "$ref": "#/$defs/Debrid"
+      },
+      "type": "array"
+    },
+    "arrs": {
+      "items": {
+        "$ref": "#/$defs/Arr"
+      },
+      "type": "array"
+    },
+    "usenet": {
+      "$ref": "#/$defs/Usenet",
+      "description": "Usenet configuration"
+    },
+    "qbittorrent": {
+      "$ref": "#/$defs/QBitTorrent",
+      "description": "Deprecated: use Manager instead",
+      "deprecated": true
+    },
+    "rclone": {
+      "$ref": "#/$defs/Rclone",
+      "description": "Deprecated: use Mounts instead",
+      "deprecated": true
+    },
+    "mount": {
+      "$ref": "#/$defs/Mount"
+    },
+    "nfs": {
+      "$ref": "#/$defs/NFS"
+    },
+    "smb": {
+      "$ref": "#/$defs/SMB"
+    },
+    "share_cache": {
+      "$ref": "#/$defs/ShareCache",
+      "description": "Read cache shared by the NFS and SMB exports"
+    },
+    "allowed_file_types": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "allow_samples": {
+      "type": "boolean"
+    },
+    "min_file_size": {
+      "type": "string"
+    },
+    "max_file_size": {
+      "type": "string"
+    },
+    "remove_stalled_after": {
+      "type": "string"
+    },
+    "enable_webdav_auth": {
+      "type": "boolean"
+    },
+    "use_auth": {
+      "type": "boolean"
+    },
+    "nzb_user_agent": {
+      "type": "string",
+      "description": "User agent for downloading NZBs"
+    },
+    "disable_webdav": {
+      "type": "boolean"
+    },
+    "notifications": {
+      "$ref": "#/$defs/Notifications",
+      "description": "Notifications configuration"
+    },
+    "discord_webhook_url": {
+      "type": "string",
+      "format": "password",
+      "description": "Deprecated: Use Notifications.WebhookURL instead",
+      "deprecated": true,
+      "writeOnly": true
+    },
+    "callback_url": {
+      "type": "string",
+      "description": "Deprecated: Use Notifications.CallbackURL instead",
+      "deprecated": true
+    },
+    "download_folder": {
+      "type": "string"
+    },
+    "refresh_interval": {
+      "type": "string"
+    },
+    "max_active_downloads": {
+      "type": "integer"
+    },
+    "skip_pre_cache": {
+      "type": "boolean"
+    },
+    "skip_multi_season": {
+      "type": "boolean"
+    },
+    "always_rm_tracker_urls": {
+      "type": "boolean"
+    },
+    "categories": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "folder_naming": {
+      "type": "string"
+    },
+    "custom_folders": {
+      "additionalProperties": {
+        "$ref": "#/$defs/CustomFolders"
+      },
+      "type": "object",
+      "description": "Deprecated: migrated to VirtualFolders.",
+      "deprecated": true
+    },
+    "virtual_folders": {
+      "items": {
+        "$ref": "#/$defs/VirtualFolder"
+      },
+      "type": "array"
+    },
+    "default_download_action": {
+      "type": "string"
+    },
+    "refresh_dirs": {
+      "type": "string"
+    },
+    "retries": {
+      "type": "integer"
+    },
+    "skip_auto_move": {
+      "type": "boolean"
+    },
+    "repair": {
+      "$ref": "#/$defs/RepairConfig"
+    },
+    "strm": {
+      "$ref": "#/$defs/Strm"
+    },
+    "hearsay": {
+      "$ref": "#/$defs/Hearsay"
+    },
+    "queue_cleanup": {
+      "$ref": "#/$defs/QueueCleanup",
+      "description": "QueueCleanup is the global arr queue-cleanup policy (see CleanupQueue)."
+    }
+  },
+  "type": "object",
+  "title": "Decypharr configuration",
+  "description": "config.json in the decypharr config directory. Generated from internal/config by cmd/schemagen; do not edit by hand."
+}
