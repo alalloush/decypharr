@@ -126,6 +126,7 @@ Array of Debrid services:
 | `download_links_refresh_interval` | string | How often to refresh download links                                            | `10m`                           |
 | `auto_expire_links_after`         | string | Auto-remove links after duration                                               | `24h`                           |
 | `user_agent`                      | string | Custom User-Agent header                                                       | Default                         |
+| `api_host`                        | string | API base URL override (scheme, host and version path) for fake/test providers. Not shown in the web UI; saving settings there drops it | Provider's public API |
 
 ## Usenet
 

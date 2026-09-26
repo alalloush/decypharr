@@ -42,9 +42,9 @@ This comes from `/opt/conf/decypharr/config.json` on al-cachy (keys and flags on
 ## Facts that shape the spec
 
 - **HTTP surface:** 109 chi route registrations in `pkg/server`. There is no OpenAPI or Swagger file in the repository.
-- **Provider hosts are hard-coded:** `realdebrid.go:84` (`https://api.real-debrid.com/rest/1.0`) and `torbox.go:98` (`https://api.torbox.app/v1`). The fork needs a configurable host as a test seam before a fake provider can be plugged in.
+- **Provider hosts were hard-coded:** `realdebrid.go:84` (`https://api.real-debrid.com/rest/1.0`) and `torbox.go:98` (`https://api.torbox.app/v1`), likewise for the other providers. The fork now has the test seam: `debrids[].api_host` (env `DECYPHARR_DEBRIDS__N__API_HOST`) points any provider at a fake server; empty keeps the public API.
 - **Persistence:** `appendstore` files (`queue.db`, `arr_bindings.db`, `reacquire_jobs.db`) plus JSON (`config.json`, `auth.json`, `torrents.json`, …).
-- **Headless mode already exists:** `DECYPHARR_*` environment overrides, for example `DECYPHARR_DEBRIDS__0__API_KEY`, and `DECYPHARR_AUTH_TOKEN_ONLY` "for headless deployments that never open the web UI" (`internal/config/env.go`). Compose then only needs the tokens and the volumes.
+- **Headless mode mostly exists:** `DECYPHARR_*` environment overrides, for example `DECYPHARR_DEBRIDS__0__API_KEY`, and `DECYPHARR_AUTH_TOKEN_ONLY` "for headless deployments that never open the web UI" (`internal/config/env.go`). Compose then only needs the tokens and the volumes. Gaps at 249ac9e (details in `../spec/env.md`): `AUTH_TOKEN_ONLY` and `API_TOKEN` are discarded because `GetAuth` returns a copy; overrides are ignored on the first start, when `config.json` is created; debrids defined only in the environment miss their per-debrid defaults.
 - **Go version:** `go.mod` already targets 1.26.5. Local Go 1.27.1 logs that `bytedance/sonic` does not support it and falls back to `encoding/json`. A later Go bump needs a sonic update or its removal.
 
 ## Spec artifacts (language-neutral source; generate TS/Rust from it)

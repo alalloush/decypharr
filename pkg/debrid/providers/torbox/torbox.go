@@ -30,6 +30,8 @@ import (
 	"go.uber.org/ratelimit"
 )
 
+const defaultHost = "https://api.torbox.app/v1"
+
 var planSlots = map[string]int{
 	"essential": 3,
 	"standard":  5,
@@ -98,7 +100,7 @@ func New(dc config.Debrid, ratelimits map[string]ratelimit.Limiter) (*Torbox, er
 	}
 
 	tb := &Torbox{
-		Host:                  "https://api.torbox.app/v1",
+		Host:                  dc.APIBaseURL(defaultHost),
 		APIKey:                dc.APIKey,
 		accountsManager:       account.NewManager(dc, submitRL, _log),
 		config:                dc,

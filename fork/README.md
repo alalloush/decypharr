@@ -8,5 +8,6 @@ Plan: merge open upstream PRs and fix issues, Real-Debrid and TorBox first. Alon
 - `research/prs.md`: open-PR triage and merge order (63 PRs).
 - `research/dmm.md`: DMM integration options (these stay in Go).
 - `research/port-plan.md`: spec artifacts, port scope and measurements.
+- `spec/`: config JSON Schema and `DECYPHARR_*` env list; see `spec/README.md`.
 
 Merged PRs keep their original author; fork commits use the `omp` identity.
