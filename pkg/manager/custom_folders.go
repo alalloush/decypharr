@@ -95,7 +95,7 @@ func (m *Manager) PreviewVirtualFolder(definition config.VirtualFolder, limit in
 	samples := make([]VirtualFolderPreviewItem, 0, limit)
 	seen := make(map[string]struct{})
 	err = m.storage.ForEachMeta(func(meta *storage.EntryMetaInfo) error {
-		if !compiled.Matches(definition.Name, meta, m.virtualFolderFileNames(meta)) {
+		if !isListableEntryMeta(meta) || !compiled.Matches(definition.Name, meta, m.virtualFolderFileNames(meta)) {
 			return nil
 		}
 		if _, ok := seen[meta.Name]; ok {
