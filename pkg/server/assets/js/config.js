@@ -2,6 +2,10 @@
 class ConfigManager {
     constructor() {
         this.debridCount = 0;
+        // Provider settings as loaded, keyed by card index. A save starts from
+        // these so fields the form does not show (limit, api_host) survive:
+        // the server replaces the provider list with the one posted.
+        this.loadedDebrids = {};
         this.arrCount = 0;
         this.usenetProviderCount = 0;
         this.debridDirectoryCounts = {};
@@ -523,6 +527,7 @@ class ConfigManager {
 
     addDebridConfig(data = {}) {
         const debridHtml = this.getDebridTemplate(this.debridCount, data);
+        this.loadedDebrids[this.debridCount] = data;
         this.refs.debridConfigs.insertAdjacentHTML('beforeend', debridHtml);
 
         // Initialize WebDAV toggle for this debrid
@@ -1335,19 +1340,24 @@ class ConfigManager {
             }
 
             let restarted = true;
+            let instance = null;
             try {
                 const result = await response.json();
                 restarted = result.restarted !== false;
+                instance = result.instance ?? null;
             } catch (_) {
                 // Older backends return no body; assume a restart happened.
             }
 
             if (restarted) {
                 window.decypharrUtils.createToast('Configuration saved successfully! Services are restarting...', 'success');
-                // Reload page after a delay to allow services to restart
-                setTimeout(() => {
-                    window.location.reload();
-                }, 2000);
+                // Reload once the restarted service answers. A fixed delay
+                // raced the restart and could land on a closed port (a bad
+                // gateway behind a reverse proxy).
+                if (!await this.waitForRestart(instance)) {
+                    window.decypharrUtils.createToast('Configuration saved, but the service has not come back yet. Reloading anyway.', 'warning');
+                }
+                window.location.reload();
             } else {
                 // Applied live — no restart, no disruptive reload.
                 window.decypharrUtils.createToast('Configuration saved and applied.', 'success');
@@ -1359,6 +1369,31 @@ class ConfigManager {
             window.decypharrUtils.createToast(`Error saving configuration: ${error.message}`, 'error');
             this.refs.loadingOverlay.classList.add('hidden');
         }
+    }
+
+    // Polls /version until it names an instance other than `previous` (the one
+    // that accepted the save). Resolves false if none answers within timeoutMs.
+    async waitForRestart(previous, {timeoutMs = 120000, pollMs = 500, probeMs = 5000} = {}) {
+        const deadline = Date.now() + timeoutMs;
+        while (Date.now() < deadline) {
+            await new Promise(resolve => setTimeout(resolve, pollMs));
+            // Cap each probe so a proxy that stalls a response cannot park
+            // the loop past the deadline.
+            const budget = Math.min(probeMs, deadline - Date.now());
+            if (budget <= 0) break;
+            try {
+                const response = await window.decypharrUtils.fetcher('/version', {
+                    cache: 'no-store',
+                    signal: AbortSignal.timeout(budget)
+                });
+                if (!response.ok) continue;
+                const {instance} = await response.json();
+                if (instance && instance !== previous) return true;
+            } catch (_) {
+                // The old listener is closed or the new one is not up yet.
+            }
+        }
+        return false;
     }
 
     validateConfiguration(config) {
@@ -1610,6 +1645,7 @@ class ConfigManager {
             }
 
             const debrid = {
+                ...this.loadedDebrids[index],
                 name: nameInput.value,
                 provider: providerInput.value,
                 api_key: apiKeyInput.value,
@@ -1634,6 +1670,8 @@ class ConfigManager {
                     .split('\n')
                     .map(key => key.trim())
                     .filter(key => key.length > 0);
+            } else {
+                delete debrid.download_api_keys;
             }
 
             debrid.torrents_refresh_interval = torrentsRefreshIntervalInput.value;

@@ -17,6 +17,9 @@ type ImportResponseSchema struct {
 	Series       struct {
 		Id int `json:"id"`
 	} `json:"series"`
+	Movie struct {
+		Id int `json:"id"`
+	} `json:"movie"`
 	SeasonNumber int `json:"seasonNumber"`
 	Episodes     []struct {
 		Id int `json:"id"`
@@ -56,6 +59,7 @@ type ManualImportFile struct {
 	FolderName   string `json:"folderName"`
 	Path         string `json:"path"`
 	SeriesId     int    `json:"seriesId"`
+	MovieId      int    `json:"movieId,omitempty"`
 	SeasonNumber int    `json:"seasonNumber"`
 	EpisodeIds   []int  `json:"episodeIds"`
 	Quality      struct {
@@ -114,6 +118,7 @@ func (s *Service) ManualImport(ctx context.Context, name, downloadID string) err
 			Path:              candidate.Path,
 			FolderName:        candidate.FolderName,
 			SeriesId:          candidate.Series.Id,
+			MovieId:           candidate.Movie.Id,
 			SeasonNumber:      candidate.SeasonNumber,
 			EpisodeIds:        episodeIDs,
 			Quality:           candidate.Quality,
