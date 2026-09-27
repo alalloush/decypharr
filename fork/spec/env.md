@@ -173,6 +173,6 @@ These are read outside `internal/config` and are not config overrides.
 |---|---|---|
 | `DECYPHARR_FIX_NZB_SIZES` | `pkg/manager/manager.go` | `1` runs the NZB size fix-up at startup. |
 | `UMASK` | `cmd/decypharr/main.go` | Process umask, octal. An invalid value stops startup. |
-| `ENABLE_PPROF` | `main.go` | Any value enables pprof, like the command-line flag. |
+| `ENABLE_PPROF` | `main.go` | Any value starts pprof (no authentication) on the `-pprof` address, which defaults to `127.0.0.1:6060`. Pass `-pprof :6060` to listen on every interface, for example to reach it through a Docker port mapping. |
 | `DFS_FUSE_BACKEND` | `pkg/mount/dfs/backend/interface.go` | FUSE backend for the DFS mount on Linux; default `hanwen`. |
 | `QBIT_PORT` | `cmd/healthcheck/main.go` | Port the healthcheck probes; defaults to the config `port`. |

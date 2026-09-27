@@ -563,6 +563,16 @@ curl -H "Authorization: Bearer TOKEN" \
   http://localhost:8282/api/torrents
 ```
 
+### Profiling (pprof)
+
+Set `ENABLE_PPROF=1` to start Go's pprof handlers. They have no authentication, so they listen on `127.0.0.1:6060` only:
+
+```bash
+go tool pprof http://127.0.0.1:6060/debug/pprof/heap
+```
+
+To reach pprof from another machine or through a Docker port mapping, pass a listen address explicitly, for example `decypharr --config /app -pprof :6060`, and keep that port off untrusted networks.
+
 ### Reset to defaults
 
 **Backup current config:**
