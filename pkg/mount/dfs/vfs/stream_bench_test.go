@@ -62,7 +62,6 @@ func newBenchItemWindow(tb testing.TB, fileSize, window int64) (*CacheItem, *Dow
 	// nil manager.
 	dls.mu.Lock()
 	dls.streamID = "bench"
-	dls.streamTracked.Store(true)
 	dls.mu.Unlock()
 	item.downloaders.Store(dls)
 
@@ -72,7 +71,6 @@ func newBenchItemWindow(tb testing.TB, fileSize, window int64) (*CacheItem, *Dow
 		// unregister it with the nil manager.
 		dls.mu.Lock()
 		dls.streamID = ""
-		dls.streamTracked.Store(false)
 		dls.mu.Unlock()
 		dls.Close(nil)
 		item.stopMetaWriter()
