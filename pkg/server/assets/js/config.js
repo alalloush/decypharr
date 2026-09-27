@@ -2,6 +2,10 @@
 class ConfigManager {
     constructor() {
         this.debridCount = 0;
+        // Provider settings as loaded, keyed by card index. A save starts from
+        // these so fields the form does not show (limit, api_host) survive:
+        // the server replaces the provider list with the one posted.
+        this.loadedDebrids = {};
         this.arrCount = 0;
         this.usenetProviderCount = 0;
         this.debridDirectoryCounts = {};
@@ -523,6 +527,7 @@ class ConfigManager {
 
     addDebridConfig(data = {}) {
         const debridHtml = this.getDebridTemplate(this.debridCount, data);
+        this.loadedDebrids[this.debridCount] = data;
         this.refs.debridConfigs.insertAdjacentHTML('beforeend', debridHtml);
 
         // Initialize WebDAV toggle for this debrid
@@ -1560,6 +1565,7 @@ class ConfigManager {
             }
 
             const debrid = {
+                ...this.loadedDebrids[index],
                 name: nameInput.value,
                 provider: providerInput.value,
                 api_key: apiKeyInput.value,
@@ -1580,6 +1586,8 @@ class ConfigManager {
                     .split('\n')
                     .map(key => key.trim())
                     .filter(key => key.length > 0);
+            } else {
+                delete debrid.download_api_keys;
             }
 
             debrid.torrents_refresh_interval = torrentsRefreshIntervalInput.value;

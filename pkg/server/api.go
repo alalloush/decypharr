@@ -2,6 +2,7 @@ package server
 
 import (
 	"bytes"
+	stdjson "encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -378,19 +379,66 @@ func (s *Server) handleUpdateConfig(w http.ResponseWriter, r *http.Request) {
 	utils.JSONResponse(w, map[string]any{"status": "success", "restarted": restarted}, http.StatusOK)
 }
 
+// mergeConfigUpdate applies a POST /api/config body to the current config as a
+// JSON merge patch (RFC 7396). Objects merge key by key, so a key the body
+// leaves out keeps its current value at any depth. Arrays and scalars replace
+// the current value, and null resets a field to its default.
+//
+// Lists are replaced whole. Decoding the body onto a copy of the config merged
+// them element by element instead: a list entry kept every field the body did
+// not send from whichever entry held its index before (another provider's
+// download keys, another Arr's download_uncached), and a client could never
+// unset a field by leaving it out.
 func mergeConfigUpdate(current *config.Config, update io.Reader) (config.Config, error) {
 	if current == nil {
 		return config.Config{}, fmt.Errorf("current config is unavailable")
 	}
-
-	merged, err := current.Clone()
+	patch, err := io.ReadAll(update)
 	if err != nil {
-		return config.Config{}, fmt.Errorf("copy current config: %w", err)
-	}
-	if err := json.ConfigDefault.NewDecoder(update).Decode(merged); err != nil {
 		return config.Config{}, err
 	}
-	return *merged, nil
+	var fields map[string]stdjson.RawMessage
+	if err := stdjson.Unmarshal(patch, &fields); err != nil || fields == nil {
+		return config.Config{}, fmt.Errorf("config update must be a JSON object")
+	}
+	base, err := json.Marshal(current)
+	if err != nil {
+		return config.Config{}, fmt.Errorf("encode current config: %w", err)
+	}
+	merged, err := mergeJSONPatch(base, patch)
+	if err != nil {
+		return config.Config{}, err
+	}
+	var next config.Config
+	if err := json.Unmarshal(merged, &next); err != nil {
+		return config.Config{}, err
+	}
+	return next, nil
+}
+
+// mergeJSONPatch returns target with patch applied as an RFC 7396 merge patch.
+// Values stay raw JSON, so numbers keep their exact text.
+func mergeJSONPatch(target, patch stdjson.RawMessage) (stdjson.RawMessage, error) {
+	var patchObject map[string]stdjson.RawMessage
+	if stdjson.Unmarshal(patch, &patchObject) != nil || patchObject == nil {
+		return patch, nil
+	}
+	var targetObject map[string]stdjson.RawMessage
+	if stdjson.Unmarshal(target, &targetObject) != nil || targetObject == nil {
+		targetObject = make(map[string]stdjson.RawMessage, len(patchObject))
+	}
+	for key, value := range patchObject {
+		if bytes.Equal(value, []byte("null")) {
+			delete(targetObject, key)
+			continue
+		}
+		merged, err := mergeJSONPatch(targetObject[key], value)
+		if err != nil {
+			return nil, err
+		}
+		targetObject[key] = merged
+	}
+	return stdjson.Marshal(targetObject)
 }
 
 func (s *Server) handlePreviewVirtualFolder(w http.ResponseWriter, r *http.Request) {
