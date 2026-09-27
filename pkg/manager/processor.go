@@ -307,6 +307,14 @@ func (m *Manager) processQueuedTorrent(entry *storage.Entry) {
 		return
 	}
 
+	// A grab that was uncached or slot-queued at submission had no file list
+	// then. The completed torrent carries the files and their provider links;
+	// without them the action runs on an empty list and completes the entry
+	// with nothing to import.
+	if debridTorrent.Status == debridTypes.TorrentStatusDownloaded {
+		applyDebridTorrentToEntry(entry, debridTorrent)
+	}
+
 	// Update entry progress
 	entry.Progress = debridTorrent.Progress / 100.0
 	entry.Speed = debridTorrent.Speed
