@@ -83,7 +83,10 @@ func NewStorage(dbPath string) (*Storage, error) {
 		SyncInterval:        time.Second,
 		CompactionThreshold: 0.5,
 		AutoCompact:         true,
-		IndexedFields:       []string{attributeCategory, attributeProvider, attributeStatus},
+		// attributeName (the folder an entry renders) is indexed so a delete
+		// can find the other entries behind the same folder without scanning
+		// the library. The index is in memory only; nothing on disk changes.
+		IndexedFields: []string{attributeCategory, attributeProvider, attributeStatus, attributeName},
 		OnError: func(err error) {
 			log.Warn().Err(err).Msg("Storage background operation failed")
 		},
@@ -119,6 +122,16 @@ func NewStorage(dbPath string) (*Storage, error) {
 		log.Warn().Err(err).Msg("Metadata migration failed")
 	} else if count > 0 {
 		log.Info().Int("count", count).Msg("Migrated entry metadata to new format")
+	}
+
+	// Older builds could drop a folder from the name index while the entry
+	// behind it stayed live, which leaves the folder listed but empty over
+	// WebDAV and the DFS mount. Rebuild those on startup; a healthy database
+	// costs one lookup per folder and no entry reads.
+	if count, err := s.ReconcileEntryItems(); err != nil {
+		log.Warn().Err(err).Msg("Name index reconciliation failed")
+	} else if count > 0 {
+		log.Info().Int("count", count).Msg("Rebuilt folders missing from the name index")
 	}
 
 	return s, nil
