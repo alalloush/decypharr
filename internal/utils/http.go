@@ -54,9 +54,7 @@ func JSONResponse(w http.ResponseWriter, data any, code int) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)
 	if data != nil {
-		encoder := json.NewEncoder(w)
-		encoder.SetIndent("", "  ")
-		_ = encoder.Encode(data)
+		_ = json.NewEncoder(w).Encode(data)
 	}
 }
 
