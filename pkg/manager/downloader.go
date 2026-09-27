@@ -18,6 +18,7 @@ import (
 	grab "github.com/cavaliergopher/grab/v3"
 	"github.com/rs/zerolog"
 	"github.com/sirrobot01/decypharr/internal/config"
+	"github.com/sirrobot01/decypharr/internal/utils"
 	"github.com/sirrobot01/decypharr/pkg/debrid/types"
 	"github.com/sirrobot01/decypharr/pkg/manager/link"
 	"github.com/sirrobot01/decypharr/pkg/notifications"
@@ -41,6 +42,11 @@ const (
 	symlinkLogSampleSize        = 8
 	localDownloadMaxAttempts    = 4
 	defaultFileDownloadWorkers  = 5
+	// A provider can report a torrent finished before it lists the files;
+	// the backoff gives it about 46s (2+4+8+16+16) to catch up.
+	noFilesRetryAttempts     = 5
+	noFilesRetryInitialDelay = 2 * time.Second
+	noFilesRetryMaxDelay     = 16 * time.Second
 )
 
 type downloadLogMeta struct {
@@ -74,6 +80,10 @@ func (d *Downloader) download(torrent *storage.Entry) error {
 	torrent.IsDownloading = true
 	_ = d.manager.queue.Update(torrent)
 
+	if err := d.ensureFiles(torrent); err != nil {
+		return err
+	}
+
 	var (
 		isMultiSeason bool
 		seasons       []SeasonInfo
@@ -105,6 +115,55 @@ func (d *Downloader) download(torrent *storage.Entry) error {
 		return nil
 	}
 	return d.process(torrent, torrentMountPath)
+}
+
+// ensureFiles re-fetches a torrent from its provider, with backoff, while the
+// entry lists no files. Some providers report a transfer finished before its
+// file list exists (Premiumize for instantly cached releases, AllDebrid
+// "ready" without files). Acting on the empty list completed the entry with
+// an empty folder and the *arr found nothing to import; now the entry fails
+// instead when the files never show up. The "none" action needs no files.
+func (d *Downloader) ensureFiles(entry *storage.Entry) error {
+	if !entry.IsTorrent() || entry.Action == config.DownloadActionNone || len(entry.GetActiveFiles()) > 0 {
+		return nil
+	}
+	placement := entry.GetActiveProvider()
+	client := d.manager.ProviderClient(entry.ActiveProvider)
+	if placement == nil || client == nil {
+		return fmt.Errorf("provider reported no files for %s", entry.Name)
+	}
+	ctx := d.operationContext()
+	delay := noFilesRetryInitialDelay
+	for attempt := 1; attempt <= noFilesRetryAttempts; attempt++ {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(delay):
+		}
+		delay = min(delay*2, noFilesRetryMaxDelay)
+		refreshed, err := client.GetTorrent(placement.ID)
+		if err != nil || refreshed == nil || len(refreshed.Files) == 0 {
+			continue
+		}
+		applyDebridTorrentToEntry(entry, refreshed)
+		if len(entry.GetActiveFiles()) == 0 {
+			continue
+		}
+		d.logger.Info().Int("attempt", attempt).Str("name", entry.Name).
+			Msg("Provider listed the files after reporting the torrent finished")
+		// The mount lists what storage holds, so publish the files before
+		// the action waits for them there.
+		if err := d.manager.AddOrUpdate(entry, nil); err != nil {
+			return fmt.Errorf("save files listed by the provider: %w", err)
+		}
+		d.manager.InvalidateEntryCache()
+		if err := d.manager.RefreshMount(); err != nil {
+			d.logger.Error().Err(err).Msg("Mount refresh failed")
+		}
+		_ = d.manager.queue.Update(entry)
+		return nil
+	}
+	return fmt.Errorf("provider still lists no files for %s after %d attempts", entry.Name, noFilesRetryAttempts)
 }
 
 func (d *Downloader) process(entry *storage.Entry, mountPath string) error {
@@ -261,7 +320,7 @@ func (d *Downloader) createSymlinksWhenMountFilesAppear(entry *storage.Entry, fi
 			}
 
 			if file, exists := remainingFiles[entryName]; exists {
-				fileSymlinkPath := filepath.Join(symlinkDir, file.Name)
+				fileSymlinkPath := filepath.Join(symlinkDir, utils.ShortenFileName(file.Name))
 				if err := os.Symlink(fullPath, fileSymlinkPath); err != nil && !os.IsExist(err) {
 					return fmt.Errorf("failed to create symlink %s -> %s: %w", fileSymlinkPath, fullPath, err)
 				}
@@ -534,7 +593,7 @@ func (d *Downloader) processTorrentDownload(entry *storage.Entry) error {
 		p.Go(func() error {
 			if err := d.localDownloader(
 				task.link,
-				filepath.Join(downloadedFolder, task.file.Name),
+				filepath.Join(downloadedFolder, utils.ShortenFileName(task.file.Name)),
 				task.file.ByteRange,
 				progressCallback,
 			); err != nil {
@@ -619,7 +678,7 @@ func (d *Downloader) processUsenetDownload(entry *storage.Entry) error {
 	p := pool.New().WithErrors().WithFirstError()
 	for _, file := range files {
 		p.Go(func() error {
-			destPath := filepath.Join(downloadedFolder, file.Name)
+			destPath := filepath.Join(downloadedFolder, utils.ShortenFileName(file.Name))
 			destFile, err := os.Create(destPath)
 			if err != nil {
 				return fmt.Errorf("failed to create file %s: %w", file.Name, err)

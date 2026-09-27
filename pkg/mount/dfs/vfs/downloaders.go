@@ -92,11 +92,9 @@ type Downloaders struct {
 	// serialized with kicker lifecycle changes.
 	idle bool
 
-	// streamID is the active stream registration ID for tracking
+	// streamID is the active stream registration ID for tracking. Guarded
+	// by mu.
 	streamID string
-	// streamTracked mirrors streamID != "" for the lock-free fast path in
-	// ensureStreamTracked. Written only under dls.mu.
-	streamTracked atomic.Bool
 
 	// Atomic waiter count for fast-path check (avoids locking dls.mu in Write() when no waiters)
 	waiterCount atomic.Int32
@@ -119,21 +117,16 @@ type Downloaders struct {
 	circuitOpenAt atomic.Int64 // Unix nano timestamp when circuit opened
 }
 
-// ensureStreamTracked makes sure the active stream is registered when reads
-// begin. Runs on every read, so it is lock-free after the first registration.
-func (dls *Downloaders) ensureStreamTracked() {
-	if dls.streamTracked.Load() {
+// ensureStreamTrackedLocked registers the active stream when reads begin.
+// Caller must hold dls.mu. Nothing is registered while the session is closed
+// or being torn down: StopAll has already untracked by then, and a stream
+// registered during the teardown could outlive the last handle, whose own
+// release finds StopAll running and returns without untracking.
+func (dls *Downloaders) ensureStreamTrackedLocked() {
+	if dls.closed || dls.stopping || dls.streamID != "" {
 		return
 	}
-	dls.mu.Lock()
-	defer dls.mu.Unlock()
-
-	if dls.closed || dls.streamID != "" {
-		return
-	}
-
 	dls.streamID = dls.manager.TrackStream(dls.item.entry, dls.item.filename, dls.client)
-	dls.streamTracked.Store(true)
 }
 
 // untrackStreamLocked removes the stream registration. Caller must hold dls.mu.
@@ -141,7 +134,6 @@ func (dls *Downloaders) untrackStreamLocked() {
 	if dls.streamID == "" {
 		return
 	}
-	dls.streamTracked.Store(false)
 	dls.manager.UntrackStream(dls.streamID)
 	dls.streamID = ""
 }
@@ -365,7 +357,6 @@ func (dls *Downloaders) keepAhead(off, length int64) {
 		return
 	}
 
-	dls.ensureStreamTracked()
 	dls.touchActivity()
 
 	dls.mu.Lock()
@@ -373,6 +364,7 @@ func (dls *Downloaders) keepAhead(off, length int64) {
 	if dls.closed || dls.stopping {
 		return
 	}
+	dls.ensureStreamTrackedLocked()
 	if dls.idle {
 		dls.idle = false
 		dls.ensureKickerRunningLocked()
@@ -403,8 +395,6 @@ func (dls *Downloaders) DownloadWithPriority(ctx context.Context, r ranges.Range
 		return false, fmt.Errorf("circuit breaker open, cooldown active: last error: %w", lastErr)
 	}
 
-	dls.ensureStreamTracked()
-
 	// Update activity timestamp for idle detection
 	dls.touchActivity()
 
@@ -419,6 +409,9 @@ func (dls *Downloaders) DownloadWithPriority(ctx context.Context, r ranges.Range
 		dls.mu.Unlock()
 		return false, errors.New("downloaders closed")
 	}
+	// Registered only now: a registration made before the wait could be
+	// dropped by the teardown this read just waited out.
+	dls.ensureStreamTrackedLocked()
 
 	// Lazy restart: if we went idle, restart the kicker goroutine.
 	if dls.idle {
@@ -1307,7 +1300,7 @@ func (dl *downloader) getRange() (start, offset int64) {
 
 // ensureSession lazily opens the downloader's session. It is untracked because
 // Downloaders keeps one active-stream registration for the shared file (see
-// ensureStreamTracked), and it declares DFS as the rewind owner so an NZB is
+// ensureStreamTrackedLocked), and it declares DFS as the rewind owner so an NZB is
 // not staged through a second persistent cache underneath this one.
 func (dl *downloader) ensureSession() (manager.StreamReader, error) {
 	dl.mu.Lock()

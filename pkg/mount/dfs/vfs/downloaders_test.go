@@ -169,6 +169,44 @@ func TestStopAllClearsWaiters(t *testing.T) {
 	}
 }
 
+// A handle can open, read cached bytes and close while the previous handle's
+// release is still tearing the session down. Its own release then finds that
+// StopAll already running and returns without untracking anything, so a
+// stream registered by its read would outlive every handle.
+func TestReadDuringTeardownDoesNotLeakStream(t *testing.T) {
+	parentCtx := context.Background()
+	ctx, cancel := context.WithCancel(parentCtx)
+	defer cancel()
+
+	backend := &persistedNZBBackend{}
+	dls := &Downloaders{
+		parentCtx: parentCtx,
+		ctx:       ctx,
+		cancel:    cancel,
+		manager:   backend,
+		item:      newTestItem(t, 4*testMiB, ranges.Range{Pos: 0, Size: 4 * testMiB}),
+	}
+	dls.lastPoke.Store(-1)
+
+	// The first handle's release is mid-teardown.
+	dls.mu.Lock()
+	dls.stopping = true
+	dls.mu.Unlock()
+
+	// The second handle reads warm data and closes before the teardown ends.
+	dls.keepAhead(0, 128*testKiB)
+	dls.StopAll()
+
+	// The first teardown finishes.
+	dls.mu.Lock()
+	dls.stopping = false
+	dls.mu.Unlock()
+
+	if got := backend.active.Load(); got != 0 {
+		t.Fatalf("%d stream registration(s) outlived every handle", got)
+	}
+}
+
 func TestCacheItemReleaseStopsDownloadersOnZeroOpens(t *testing.T) {
 	parentCtx := context.Background()
 	ctx, cancel := context.WithCancel(parentCtx)

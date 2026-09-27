@@ -524,9 +524,11 @@ func (e *Entry) IsValid() bool {
 	return activePlacement.IsValid()
 }
 
-// DownloadPath returns the expected download/symlink path for this entry
+// DownloadPath returns the expected download/symlink path for this entry. The
+// folder is shortened to NAME_MAX (utils.ShortenName): a longer release name
+// fails every mkdir and symlink under it.
 func (e *Entry) DownloadPath() string {
-	return filepath.Join(e.SavePath, utils.RemoveExtension(e.Name))
+	return filepath.Join(e.SavePath, utils.ShortenName(utils.RemoveExtension(e.Name)))
 }
 
 // SwitcherJob tracks the progress of a migration operation
