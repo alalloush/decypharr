@@ -64,7 +64,7 @@ func (s *Server) LoginHandler(w http.ResponseWriter, r *http.Request) {
 	session.Values["authenticated"] = true
 	session.Values["username"] = username
 	session.Values["auth_version"] = sessionVersion
-	if err := session.Save(r, w); err != nil {
+	if err := s.saveSession(w, r, session); err != nil {
 		http.Error(w, "Error saving session", http.StatusInternalServerError)
 		return
 	}
@@ -75,7 +75,7 @@ func (s *Server) LogoutHandler(w http.ResponseWriter, r *http.Request) {
 	session, _ := s.cookie.Get(r, "auth-session")
 	session.Values["authenticated"] = false
 	session.Options.MaxAge = -1
-	err := session.Save(r, w)
+	err := s.saveSession(w, r, session)
 	if err != nil {
 		return
 	}
@@ -135,7 +135,7 @@ func (s *Server) RegisterHandler(w http.ResponseWriter, r *http.Request) {
 	session.Values["authenticated"] = true
 	session.Values["username"] = username
 	session.Values["auth_version"] = updated.GetAuth().SessionVersion
-	if err := session.Save(r, w); err != nil {
+	if err := s.saveSession(w, r, session); err != nil {
 		http.Error(w, "Error saving session", http.StatusInternalServerError)
 		return
 	}

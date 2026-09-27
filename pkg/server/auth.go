@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/gorilla/sessions"
 	"github.com/sirrobot01/decypharr/internal/config"
 )
 
@@ -28,6 +29,26 @@ func (s *Server) skipAuthHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.redirectTo(w, r, "/")
+}
+
+// saveSession writes the session cookie, marked Secure when the browser
+// reached the server over HTTPS, so the browser never sends it over plain
+// HTTP.
+func (s *Server) saveSession(w http.ResponseWriter, r *http.Request, session *sessions.Session) error {
+	session.Options.Secure = isHTTPS(r)
+	return session.Save(r, w)
+}
+
+// isHTTPS reports whether the client connected over HTTPS: to this server,
+// or to a TLS-terminating proxy that says so in X-Forwarded-Proto (the first
+// value, set by the proxy the client reached). A forged header only limits
+// the forger's own cookie to HTTPS.
+func isHTTPS(r *http.Request) bool {
+	if r.TLS != nil {
+		return true
+	}
+	proto, _, _ := strings.Cut(r.Header.Get("X-Forwarded-Proto"), ",")
+	return strings.EqualFold(strings.TrimSpace(proto), "https")
 }
 
 // isValidAPIToken checks if the request contains a valid API token

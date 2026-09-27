@@ -133,13 +133,6 @@ func New(mgr *manager.Manager) *Server {
 	cfg := config.Get()
 
 	templates := parseTemplates()
-	cookieStore := sessions.NewCookieStore([]byte(cfg.SecretKey()))
-	cookieStore.Options = &sessions.Options{
-		Path:     "/",
-		MaxAge:   86400 * 7,
-		HttpOnly: true,
-		SameSite: http.SameSiteLaxMode,
-	}
 
 	statsCollector := stats.New(mgr)
 
@@ -147,7 +140,7 @@ func New(mgr *manager.Manager) *Server {
 		logger:     l,
 		manager:    mgr,
 		stats:      statsCollector,
-		cookie:     cookieStore,
+		cookie:     newCookieStore(cfg.SecretKey()),
 		templates:  templates,
 		urlBase:    cfg.URLBase,
 		instanceID: rand.Text(),
@@ -201,6 +194,19 @@ func New(mgr *manager.Manager) *Server {
 	})
 	s.router = r
 	return s
+}
+
+// newCookieStore holds the browser session. saveSession sets Secure per
+// response, from how the client connected.
+func newCookieStore(secret string) *sessions.CookieStore {
+	store := sessions.NewCookieStore([]byte(secret))
+	store.Options = &sessions.Options{
+		Path:     "/",
+		MaxAge:   86400 * 7,
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+	}
+	return store
 }
 
 func (s *Server) SetRestartFunc(restartFunc func()) {
