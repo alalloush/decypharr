@@ -12,7 +12,7 @@ import (
 func (s *Server) LoginHandler(w http.ResponseWriter, r *http.Request) {
 	cfg := config.Get()
 	if cfg.NeedsAuth() {
-		http.Redirect(w, r, "/register", http.StatusSeeOther)
+		s.redirectTo(w, r, "/register")
 		return
 	}
 	auth := cfg.GetAuth()
@@ -68,7 +68,7 @@ func (s *Server) LoginHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Error saving session", http.StatusInternalServerError)
 		return
 	}
-	http.Redirect(w, r, "/", http.StatusSeeOther)
+	s.redirectTo(w, r, "/")
 }
 
 func (s *Server) LogoutHandler(w http.ResponseWriter, r *http.Request) {
@@ -79,7 +79,7 @@ func (s *Server) LogoutHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		return
 	}
-	http.Redirect(w, r, "/login", http.StatusSeeOther)
+	s.redirectTo(w, r, "/login")
 }
 
 func (s *Server) RegisterHandler(w http.ResponseWriter, r *http.Request) {
@@ -93,7 +93,7 @@ func (s *Server) RegisterHandler(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "forbidden", http.StatusForbidden)
 			return
 		}
-		http.Redirect(w, r, "/", http.StatusSeeOther)
+		s.redirectTo(w, r, "/")
 		return
 	}
 
@@ -140,7 +140,7 @@ func (s *Server) RegisterHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	http.Redirect(w, r, "/", http.StatusSeeOther)
+	s.redirectTo(w, r, "/")
 }
 
 func (s *Server) IndexHandler(w http.ResponseWriter, r *http.Request) {

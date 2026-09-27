@@ -50,7 +50,7 @@ func (s *Server) SetupHandler(w http.ResponseWriter, r *http.Request) {
 	cfg := config.Get()
 
 	if err := cfg.SetupComplete(); err == nil {
-		http.Redirect(w, r, "/", http.StatusSeeOther)
+		s.redirectTo(w, r, "/")
 		return
 	}
 	data := map[string]any{
