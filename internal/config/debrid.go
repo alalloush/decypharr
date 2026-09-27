@@ -37,6 +37,11 @@ type Debrid struct {
 	// path, e.g. https://api.real-debrid.com/rest/1.0. Empty uses the
 	// provider's public API. Meant for tests and fake providers.
 	APIHost string `json:"api_host,omitempty"`
+	// KeepInSync adopts completed torrents that are already on this provider
+	// but were added outside decypharr (for example through Debrid Media
+	// Manager) as completed downloads in the "other" category. Adopted
+	// entries are served from the mount; nothing is downloaded or linked.
+	KeepInSync bool `json:"keep_in_sync,omitempty"`
 
 	// Folder
 	Folder        string `json:"folder,omitempty"`          // Deprecated. Use Mount MountPath instead.
@@ -167,6 +172,9 @@ func (c *Config) applyDebridEnvVars() {
 				if v, err := strconv.Atoi(priority); err == nil {
 					c.Debrids[i].Priority = v
 				}
+			}
+			if keepInSync := getEnv(prefix + "KEEP_IN_SYNC"); keepInSync != "" {
+				c.Debrids[i].KeepInSync = parseBool(keepInSync)
 			}
 		}
 	}

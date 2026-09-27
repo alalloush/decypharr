@@ -179,6 +179,10 @@
           "type": "string",
           "description": "APIHost overrides the provider's API base URL: scheme, host and version\npath, e.g. https://api.real-debrid.com/rest/1.0. Empty uses the\nprovider's public API. Meant for tests and fake providers."
         },
+        "keep_in_sync": {
+          "type": "boolean",
+          "description": "KeepInSync adopts completed torrents that are already on this provider\nbut were added outside decypharr (for example through Debrid Media\nManager) as completed downloads in the \"other\" category. Adopted\nentries are served from the mount; nothing is downloaded or linked."
+        },
         "folder": {
           "type": "string",
           "description": "Deprecated. Use Mount MountPath instead.",

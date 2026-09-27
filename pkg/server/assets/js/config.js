@@ -827,6 +827,17 @@ class ConfigManager {
                             </div>
                         </label>
                     </div>
+
+                    <div>
+                        <label class="label cursor-pointer justify-start gap-2">
+                            <input type="checkbox" class="checkbox checkbox-primary"
+                                   name="debrid[${index}].keep_in_sync" id="debrid[${index}].keep_in_sync">
+                            <div>
+                                <span class="font-medium">Keep In Sync</span>
+                                <div class="label-text-alt">Adopt torrents added elsewhere (e.g. DMM) as "other"</div>
+                            </div>
+                        </label>
+                    </div>
                 </div>
         </div>
     `;
@@ -1583,6 +1594,7 @@ class ConfigManager {
             const proxyInput = getField('proxy');
             const downloadUncachedInput = getField('download_uncached');
             const unpackRarInput = getField('unpack_rar');
+            const keepInSyncInput = getField('keep_in_sync');
             const addSamplesInput = getField('add_samples');
             const userAgentInput = getField('user_agent');
             const slotStrategyInput = getField('slot_strategy');
@@ -1592,7 +1604,7 @@ class ConfigManager {
             const autoExpireLinksAfterInput = getField('auto_expire_links_after');
 
             if (!nameInput || !providerInput || !apiKeyInput || !rateLimitInput || !repairRateLimitInput || !downloadRateLimitInput ||
-                !minimumFreeSlotInput || !priorityInput || !proxyInput || !downloadUncachedInput || !unpackRarInput || !addSamplesInput ||
+                !minimumFreeSlotInput || !priorityInput || !proxyInput || !downloadUncachedInput || !unpackRarInput || !keepInSyncInput || !addSamplesInput ||
                 !userAgentInput || !torrentsRefreshIntervalInput || !downloadLinksRefreshIntervalInput || !autoExpireLinksAfterInput) {
                 return;
             }
@@ -1609,6 +1621,7 @@ class ConfigManager {
                 proxy: proxyInput.value,
                 download_uncached: downloadUncachedInput.checked,
                 unpack_rar: unpackRarInput.checked,
+                keep_in_sync: keepInSyncInput.checked,
                 add_samples: addSamplesInput.checked,
                 user_agent: userAgentInput.value,
                 // Hidden for other providers; a leftover value would fail config validation.

@@ -118,6 +118,10 @@ func (m *Manager) doRefreshTorrents(_ context.Context, provider string, debridCl
 	// Wait for concurrent update to finish
 	updateWg.Wait()
 
+	if debridClient.Config().KeepInSync {
+		m.keepInSync(provider, remoteTorrentsByHash)
+	}
+
 	return nil
 }
 
@@ -208,7 +212,9 @@ func (m *Manager) handleTorrentDeletions(torrentsToDelete []string) {
 			for infohash := range deleteChan {
 				if err := m.storage.Delete(infohash); err != nil {
 					m.logger.Error().Err(err).Str("infohash", infohash).Msg("Failed to delete torrent")
+					continue
 				}
+				m.dropKeepInSyncEntry(infohash)
 			}
 		})
 	}
