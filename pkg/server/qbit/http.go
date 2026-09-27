@@ -65,12 +65,38 @@ func (q *QBit) handleShutdown(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
+// normalizeStateFilter maps qBittorrent's `filter` query parameter onto a
+// storage.TorrentState.
+//
+// qBittorrent's filter defaults to "all", meaning unfiltered. "all" is not a
+// TorrentState, so forwarding it as one matched no entry and returned an empty
+// list to any client that sent it explicitly.
+func normalizeStateFilter(raw string) string {
+	state := strings.TrimSpace(raw)
+	if strings.EqualFold(state, "all") {
+		return ""
+	}
+	return state
+}
+
+// queueHashes maps qBittorrent's `hashes` parameter onto a queue hash filter.
+// A lone "all" is qBittorrent's sentinel for every torrent; matched literally
+// it selects a torrent whose infohash is "all", which never exists. The
+// sentinel is resolved here, not in the shared queue filter, so the web UI's
+// bulk delete never reads "all" as "everything".
+func queueHashes(hashes []string) []string {
+	if len(hashes) == 1 && strings.EqualFold(strings.TrimSpace(hashes[0]), "all") {
+		return nil
+	}
+	return hashes
+}
+
 func (q *QBit) handleTorrentsInfo(w http.ResponseWriter, r *http.Request) {
 	//log all url params
 	ctx := r.Context()
 	category := getCategory(ctx)
-	state := strings.Trim(r.URL.Query().Get("filter"), "")
-	hashes := getHashes(ctx)
+	state := normalizeStateFilter(r.URL.Query().Get("filter"))
+	hashes := queueHashes(getHashes(ctx))
 
 	// Convert hashes to filter function
 	torrents, err := q.manager.Queue().ListFilter(category, config.ProtocolTorrent, storage.TorrentState(state), hashes, "added_on", false)
@@ -343,7 +369,7 @@ func (q *QBit) handleAddTorrentTags(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ctx := r.Context()
-	hashes := getHashes(ctx)
+	hashes := queueHashes(getHashes(ctx))
 	tags := strings.Split(r.FormValue("tags"), ",")
 	for i, tag := range tags {
 		tags[i] = strings.TrimSpace(tag)
@@ -366,7 +392,7 @@ func (q *QBit) handleRemoveTorrentTags(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ctx := r.Context()
-	hashes := getHashes(ctx)
+	hashes := queueHashes(getHashes(ctx))
 	tags := strings.Split(r.FormValue("tags"), ",")
 	for i, tag := range tags {
 		tags[i] = strings.TrimSpace(tag)
