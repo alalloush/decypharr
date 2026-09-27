@@ -6,8 +6,13 @@ import (
 )
 
 type Hearsay struct {
-	Disabled             bool     `json:"disabled,omitzero"`
-	Participate          *bool    `json:"participate,omitempty"`
+	Disabled bool `json:"disabled,omitzero"`
+	// Participate joins the public hearsay P2P network: BitTorrent DHT,
+	// gossip, and relaying other nodes' data. Off unless set to true (fork
+	// default, audit H4; upstream turns it on).
+	Participate *bool `json:"participate,omitempty"`
+	// Publish shares this node's observations while it participates. On
+	// unless set to false.
 	Publish              *bool    `json:"publish,omitempty"`
 	AdviceMode           string   `json:"advice_mode,omitempty"`
 	MinSupport           float64  `json:"min_support,omitzero"`
@@ -22,8 +27,10 @@ type Hearsay struct {
 	Follow               []string `json:"follow,omitempty"`
 }
 
+// Participates reports whether hearsay joins the public network. Only an
+// explicit participate: true opts in.
 func (h Hearsay) Participates() bool {
-	return h.Participate == nil || *h.Participate
+	return h.Participate != nil && *h.Participate
 }
 
 func (h Hearsay) Publishes() bool {

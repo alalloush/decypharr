@@ -1,6 +1,8 @@
+//go:build !nohearsay
+
 // Package hearsay connects Decypharr's real outcomes to an embedded
-// Hearsay engine. Network sharing is enabled by default; active decisions
-// remain opt-in.
+// Hearsay engine. Observations stay local unless the operator opts in to the
+// public network (hearsay.participate); active decisions are opt-in too.
 package hearsay
 
 import (
@@ -176,6 +178,10 @@ func New(cfg *config.Config, log zerolog.Logger) (*Service, error) {
 				s.log.Debug().Str("ns", ns).Str("feed", feed[:8]).Msg("dropped feed outside the follow list")
 			}
 		}
+	}
+	if cfg.Hearsay.Participate == nil {
+		s.log.Info().Msg("Hearsay public P2P network is off by default in this fork; observations stay local. " +
+			"Set hearsay.participate to true (DECYPHARR_HEARSAY__PARTICIPATE=true) to join")
 	}
 	return s, nil
 }

@@ -43,15 +43,25 @@ func TestHearsaySeededTorrentLimitRequiresRestart(t *testing.T) {
 	}
 }
 
+// The public network is opt-in (audit H4). A config written before the
+// change has no participate key and must get the new default; publishing
+// follows participation unless it is turned off.
 func TestHearsayNetworkDefaults(t *testing.T) {
-	if !(Hearsay{}).Participates() || !(Hearsay{}).Publishes() {
-		t.Fatal("network participation and publishing should default on")
+	var legacy Config
+	if err := json.Unmarshal([]byte(`{"hearsay":{"advice_mode":"shadow","min_support":0.5}}`), &legacy); err != nil {
+		t.Fatal(err)
 	}
-	if (Hearsay{Participate: new(false)}).Participates() {
-		t.Fatal("explicit participation opt-out ignored")
+	if legacy.Hearsay.Participates() || legacy.Hearsay.Publishes() {
+		t.Fatal("a config without participate joins the public network")
 	}
-	if (Hearsay{Publish: new(false)}).Publishes() {
+	if !(Hearsay{Participate: new(true)}).Participates() || !(Hearsay{Participate: new(true)}).Publishes() {
+		t.Fatal("explicit participation should join and publish")
+	}
+	if (Hearsay{Participate: new(true), Publish: new(false)}).Publishes() {
 		t.Fatal("explicit publishing opt-out ignored")
+	}
+	if (Hearsay{Publish: new(true)}).Publishes() {
+		t.Fatal("publish without participate should not publish")
 	}
 }
 

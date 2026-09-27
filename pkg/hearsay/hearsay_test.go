@@ -1,3 +1,5 @@
+//go:build !nohearsay
+
 package hearsay
 
 import (
@@ -98,7 +100,9 @@ func TestDisabledIsInert(t *testing.T) {
 	s.Close()
 }
 
-func TestNetworkPublisherShadowDefaults(t *testing.T) {
+// The public network is opt-in: a config without participate keeps hearsay
+// local, and Start opens no transport. An explicit true joins and publishes.
+func TestNetworkIsOptIn(t *testing.T) {
 	config.SetConfigPath(t.TempDir())
 	cfg := &config.Config{Debrids: []config.Debrid{{Provider: "realdebrid"}}}
 	s, err := New(cfg, zerolog.Nop())
@@ -107,11 +111,28 @@ func TestNetworkPublisherShadowDefaults(t *testing.T) {
 	}
 	t.Cleanup(s.Close)
 	status := s.Status()
-	if !status.Participate || !status.Publish {
-		t.Fatalf("network defaults disabled: %+v", status)
+	if status.Participate || status.Publish {
+		t.Fatalf("default config participates: %+v", status)
 	}
-	if status.Protocol != hearsaylib.ProtocolVersion || status.AdviceMode != "shadow" {
-		t.Fatalf("protocol and advice mode = %q, %q", status.Protocol, status.AdviceMode)
+	if !status.Enabled || status.Protocol != hearsaylib.ProtocolVersion || status.AdviceMode != "shadow" {
+		t.Fatalf("local defaults = %+v", status)
+	}
+	if err := s.Start(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if status := s.Status(); status.Transport != nil {
+		t.Fatalf("default config opened the P2P transport: %+v", status.Transport)
+	}
+	s.Close()
+
+	cfg.Hearsay.Participate = new(true)
+	joined, err := New(cfg, zerolog.Nop())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(joined.Close)
+	if status := joined.Status(); !status.Participate || !status.Publish {
+		t.Fatalf("explicit participation ignored: %+v", status)
 	}
 }
 
@@ -143,7 +164,7 @@ func TestSeededTorrentLimit(t *testing.T) {
 			config.SetConfigPath(t.TempDir())
 			cfg := &config.Config{
 				Debrids: []config.Debrid{{Provider: "realdebrid"}},
-				Hearsay: config.Hearsay{MaxSeededTorrents: test.limit, Publish: new(false)},
+				Hearsay: config.Hearsay{MaxSeededTorrents: test.limit, Participate: new(true), Publish: new(false)},
 			}
 			s, err := New(cfg, zerolog.Nop())
 			if err != nil {

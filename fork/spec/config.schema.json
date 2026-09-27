@@ -252,10 +252,12 @@
           "type": "boolean"
         },
         "participate": {
-          "type": "boolean"
+          "type": "boolean",
+          "description": "Participate joins the public hearsay P2P network: BitTorrent DHT,\ngossip, and relaying other nodes' data. Off unless set to true (fork\ndefault, audit H4; upstream turns it on)."
         },
         "publish": {
-          "type": "boolean"
+          "type": "boolean",
+          "description": "Publish shares this node's observations while it participates. On\nunless set to false."
         },
         "advice_mode": {
           "type": "string"

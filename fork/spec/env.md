@@ -153,8 +153,8 @@ Providers use indexes 0 to 9. The other keys of an index apply only when that in
 | Variable | Config path | Type | Notes |
 |---|---|---|---|
 | `DECYPHARR_HEARSAY__DISABLED` | `hearsay.disabled` | bool | |
-| `DECYPHARR_HEARSAY__PARTICIPATE` | `hearsay.participate` | bool | |
-| `DECYPHARR_HEARSAY__PUBLISH` | `hearsay.publish` | bool | |
+| `DECYPHARR_HEARSAY__PARTICIPATE` | `hearsay.participate` | bool | Joins the public P2P network. Fork default `false` when unset (audit H4); upstream defaults to `true`. |
+| `DECYPHARR_HEARSAY__PUBLISH` | `hearsay.publish` | bool | `true` when unset; only takes effect while participating. |
 | `DECYPHARR_HEARSAY__ADVICE_MODE` | `hearsay.advice_mode` | string | Trimmed and lower-cased. |
 | `DECYPHARR_HEARSAY__MIN_SUPPORT` | `hearsay.min_support` | float | |
 | `DECYPHARR_HEARSAY__MIN_EVIDENCE` | `hearsay.min_evidence` | float | |
