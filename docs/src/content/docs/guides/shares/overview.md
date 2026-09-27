@@ -16,7 +16,7 @@ can enable more than one share at the same time.
 
 | Share  | Best for                                | Access control            |
 |--------|-----------------------------------------|---------------------------|
-| WebDAV | Quick access, STRM files, HTTP clients  | Basic Auth                |
+| WebDAV | Quick access, STRM files, HTTP clients  | Web UI login or API token when `use_auth` is on; read-only unless `webdav_allow_delete` |
 | NFS    | Linux and macOS media servers           | Network ranges only       |
 | SMB    | Windows clients, mixed networks         | User name, password, and network ranges |
 

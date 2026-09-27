@@ -437,26 +437,28 @@ If logs are large:
 
 1. **Test URL:**
    ```bash
-   curl http://localhost:8282/webdav/
+   curl -u USER:PASS -X PROPFIND http://localhost:8282/webdav/
    ```
-2. **Check auth:**
-   ```json
-   {
-     "use_auth": true,
-     "enable_webdav_auth": true
-   }
-   ```
-3. **Verify credentials match config**
+   `207` means WebDAV works. `401` means the credentials were refused.
+2. **Check auth:** while `use_auth` is on, WebDAV needs the web UI username and password, or the API token as the
+   password (any username) or as a bearer token. `enable_webdav_auth` no longer exists.
+3. **Verify credentials match the web UI login**
 
 ### Authentication keeps prompting
 
-Clear browser cache or saved credentials.
+Clear browser cache or saved credentials. A changed password or a refreshed API token applies at once.
 
 For apps, provide full URL with auth:
 
 ```
 http://username:password@decypharr:8282/webdav/
 ```
+
+### Delete, copy or move fails
+
+WebDAV is read-only by default. `DELETE` answers `403` until `webdav_allow_delete` is set, because deleting a torrent
+folder deletes the torrent from the debrid provider. `COPY` and `MOVE` always answer `405`. See
+[Read-only by default](/guides/shares/webdav/#read-only-by-default).
 
 ### Files won't play in WebDAV client
 
@@ -546,6 +548,9 @@ curl -H "Authorization: Bearer TOKEN" \
   http://localhost:8282/api/config | jq
 ```
 
+Stored credentials show as `********`; `config.json` holds the real values. The API token (`api_token`) is shown as
+is.
+
 **Validate JSON:**
 
 ```bash
@@ -604,8 +609,11 @@ If you can't resolve the issue:
     - Mount type
     - Providers used
 
-**Sanitize config before sharing:**
+**Sanitize `config.json` before sharing:**
 
 ```bash
 cat config.json | sed 's/"api_key": ".*"/"api_key": "REDACTED"/g'
 ```
+
+That covers `api_key` only. `GET /api/config` replaces the stored credentials with `********`, but it still includes
+the API token (`api_token`); remove that before sharing its output.
