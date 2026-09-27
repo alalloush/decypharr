@@ -1,12 +1,12 @@
 module github.com/sirrobot01/decypharr
 
-go 1.26.5
+go 1.26.6
 
 require (
 	github.com/Tensai75/nzbparser v0.1.0
 	github.com/Tensai75/subjectparser v0.1.0
 	github.com/anacrolix/torrent v1.61.0
-	github.com/bytedance/sonic v1.15.0
+	github.com/bytedance/sonic v1.15.4
 	github.com/cavaliergopher/grab/v3 v3.0.1
 	github.com/go-chi/chi/v5 v5.3.1
 	github.com/go-co-op/gocron/v2 v2.22.0
@@ -66,7 +66,7 @@ require (
 	github.com/bradfitz/iter v0.0.0-20191230175014-e8f45d346db8 // indirect
 	github.com/buger/jsonparser v1.1.2 // indirect
 	github.com/bytedance/gopkg v0.1.3 // indirect
-	github.com/bytedance/sonic/loader v0.5.1 // indirect
+	github.com/bytedance/sonic/loader v0.5.2 // indirect
 	github.com/cespare/xxhash v1.1.0 // indirect
 	github.com/cloudwego/base64x v0.1.6 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect

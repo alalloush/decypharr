@@ -12,3 +12,5 @@ Plan: merge open upstream PRs and fix issues, Real-Debrid and TorBox first. Alon
 - `spec/`: config JSON Schema and `DECYPHARR_*` env list; see `spec/README.md`.
 
 Merged PRs keep their original author; fork commits use the `omp` identity.
+
+Toolchain: `go.mod` requires go1.26.6, and the Dockerfile's `golang:1.26-alpine` pulls the latest 1.26.x. Go 1.27.1 is held back because of [golang/go#81404](https://github.com/golang/go/issues/81404): an HTTP/1 deadlock when a response body is read and closed concurrently, a regression from 1.27's automatic body draining. Streaming is decypharr's hot path. Move to go1.27.2 or later once it is released; it carries the fix ([CL 830424](https://go.dev/cl/830424)). sonic v1.15.4 already runs natively on 1.27, and the `internal/request` drain tests pass on both.
