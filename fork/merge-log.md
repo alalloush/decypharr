@@ -54,3 +54,57 @@ Full `go test ./...` on integrated `dev`: 37 packages pass. The only failures ar
 ### Worker note
 
 `git stash` is shared across all worktrees of this repo. For before/after test checks, copy files aside instead of stashing.
+
+## Round 2 — 2026-09-27
+
+### Taken
+
+| PR | Change | Notes |
+|---|---|---|
+| #367 | qBit `hashes=all` means unfiltered | Resolved in the qBit handlers, not the shared filter. Upstream's version made the web-UI bulk delete `hashes=all` wipe every entry. |
+| #418 | qBit setCategory respects `hashes` | Before, an arr post-import category rewrote every entry. |
+| #393 | Radarr manual import sends `movieId` | |
+| #363 (reworked) | `POST /api/config` is an RFC 7396 merge patch | Lists replace, objects merge, `null` resets. The settings page round-trips hidden fields (`api_host`, RD `limit`). Fixes the rest of upstream #343. |
+| #421 | Config-save restart can't leave the server unreachable | Bounded drain; the page waits for a new instance marker. |
+| #424 (adapted) | A folder stays served while another entry renders it | In-memory name index: Delete at 10k entries 12 µs instead of the PR's 7 ms. Fixes #423. |
+| #312 (partial) | DFS teardown race: phantom stream registrations | |
+| #327 (partial) | Names over 255 bytes are truncated with a `~hash` suffix | The ASCII-rename option was dropped. The DFS mount keeps full names. |
+| #410 (partial) | Completed queued grabs get their file list | Affected every provider. |
+| #394 (adapted) | Zero-file completion retries ~46 s, then fails instead of completing empty | |
+| #294 (reworked) | Debrid provider `priority` | Before, provider order was random per restart (xsync map seed). Unset = config position. An uncached TorBox miss falls through by priority. |
+| #275 part (a) | `keep_in_sync`: adopt finished provider torrents (e.g. added via DMM) | Opt-in per debrid. No extra provider calls. A hash shared by RD and TorBox is adopted once. |
+| #406 (fixed) | AllDebrid: ready magnet with no files isn't done | |
+| #426 | Premiumize re-mints the CDN link | Fixes #425. |
+| #399 (trimmed) | AllDebrid slot strategies | Opt-in. Supersedes #199. |
+
+### Skipped
+
+| PR | Reason |
+|---|---|
+| #283 | Beta rewrote the DFS read path. Its classifier made warm reads 21–71% slower (benchstat). |
+| #378 | Obsolete: hybrid store removed; appendstore v0.6.0 compacts safely. |
+| #325 | Already on beta, except ~62 s of validation retries that would block DFS reads. |
+| #174, #262 | Obsolete on beta. |
+| #264 | Rewrites names and DFS layout for every `.torrent` upload; conflicts in 5 files. |
+| #275 part (b), #321 | Dashboard relabel/moves are out of scope; #321 duplicates #275. |
+| #350, #389, #392 | Large bundles; verdicts in `research/bundles.md`. |
+| #191 | Carried into round 3 (URL-base-aware redirects). |
+
+Upstream issues already fixed on beta (in addition to round 1): #298, #315, #377, #412.
+
+### Verify on the live setup
+
+- Save settings once. `config.json` keeps a hand-set `limit`/`api_host`, and per-arr `download_uncached` can be reset.
+- Behind Pangolin, a restart-requiring save reloads cleanly with no bad gateway.
+- The arrs' post-import category changes only that torrent.
+- Set `priority` on RD and TorBox; grabs go to the lowest number first, and an uncached TorBox miss falls through to the next provider.
+- With `keep_in_sync` on, DMM-added torrents appear under category `other`. A restart adopts nothing new.
+- The DFS stats page shows 0 streams after playback stops. Folders shared by two entries survive deleting one of them.
+
+### Test status
+
+Full suite on `dev` 2c86465 with `GOTOOLCHAIN=go1.26.5`: 38 packages pass. Two test fakes needed fixing after the branches met (a0090b1).
+
+### Build note
+
+Rebuild `pkg/server/assets/build/js` with `npm ci --ignore-scripts && node scripts/minify-js.js`. The pinned terser reproduces the committed files byte for byte.
