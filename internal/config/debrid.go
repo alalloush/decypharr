@@ -1,6 +1,7 @@
 package config
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 	"runtime"
@@ -25,6 +26,10 @@ type Debrid struct {
 	Workers                      int      `json:"workers,omitempty"`
 	AutoExpireLinksAfter         string   `json:"auto_expire_links_after,omitempty"`
 	UserAgent                    string   `json:"user_agent,omitempty"`
+	// SlotStrategy frees AllDebrid magnet slots: "remove_after_add" deletes a
+	// magnet once its download completes, "remove_oldest" deletes the oldest
+	// magnet on the account before a submit at the limit. Empty keeps them.
+	SlotStrategy string `json:"slot_strategy,omitempty"`
 	// APIHost overrides the provider's API base URL: scheme, host and version
 	// path, e.g. https://api.real-debrid.com/rest/1.0. Empty uses the
 	// provider's public API. Meant for tests and fake providers.
@@ -94,6 +99,14 @@ func validateDebrids(debrids []Debrid) error {
 		// Basic field validation
 		if debrid.APIKey == "" {
 			return errors.New("debrid api key is required")
+		}
+		if debrid.SlotStrategy != "" {
+			if cmp.Or(debrid.Provider, debrid.Name) != "alldebrid" {
+				return fmt.Errorf("slot_strategy is only supported for alldebrid provider")
+			}
+			if debrid.SlotStrategy != "remove_after_add" && debrid.SlotStrategy != "remove_oldest" {
+				return fmt.Errorf("invalid slot_strategy: %s (must be 'remove_after_add' or 'remove_oldest')", debrid.SlotStrategy)
+			}
 		}
 	}
 

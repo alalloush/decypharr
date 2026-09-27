@@ -167,6 +167,10 @@
         "user_agent": {
           "type": "string"
         },
+        "slot_strategy": {
+          "type": "string",
+          "description": "SlotStrategy frees AllDebrid magnet slots: \"remove_after_add\" deletes a\nmagnet once its download completes, \"remove_oldest\" deletes the oldest\nmagnet on the account before a submit at the limit. Empty keeps them."
+        },
         "api_host": {
           "type": "string",
           "description": "APIHost overrides the provider's API base URL: scheme, host and version\npath, e.g. https://api.real-debrid.com/rest/1.0. Empty uses the\nprovider's public API. Meant for tests and fake providers."

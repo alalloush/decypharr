@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -14,6 +16,7 @@ import (
 	"github.com/sirrobot01/decypharr/internal/config"
 	"github.com/sirrobot01/decypharr/internal/customerror"
 	"github.com/sirrobot01/decypharr/internal/request"
+	"github.com/sirrobot01/decypharr/internal/utils"
 	debridTypes "github.com/sirrobot01/decypharr/pkg/debrid/types"
 )
 
@@ -381,5 +384,100 @@ func TestAvailabilityReportsUnsupported(t *testing.T) {
 	result, err := (&AllDebrid{}).IsAvailable([]string{"hash"})
 	if err != debridTypes.ErrAvailabilityUnsupported || result != nil {
 		t.Fatalf("IsAvailable = %v, %v", result, err)
+	}
+}
+
+// torrentLimit caps what a configured `limit` can request; it never lets a
+// user push AllDebrid's own ~5000 ceiling higher, and still lets them set a
+// lower, self-imposed one.
+func TestTorrentLimit(t *testing.T) {
+	cases := []struct {
+		name  string
+		limit int
+		want  int
+	}{
+		{"unset defaults to the cap", 0, maxTorrentLimit},
+		{"negative defaults to the cap", -1, maxTorrentLimit},
+		{"below the cap is honoured", 1000, 1000},
+		{"exactly at the cap is honoured", maxTorrentLimit, maxTorrentLimit},
+		{"above the cap is clamped down", 9000, maxTorrentLimit},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			ad := &AllDebrid{config: config.Debrid{Limit: c.limit}}
+			if got := ad.torrentLimit(); got != c.want {
+				t.Errorf("torrentLimit() with configured limit %d = %d, want %d", c.limit, got, c.want)
+			}
+		})
+	}
+}
+
+// slotServer lists `magnets` (id i uploaded at time 100-i, so the highest id is
+// the oldest), records /magnet/delete ids and accepts any upload as id 99.
+func slotServer(t *testing.T, magnets int) (string, *atomic.Int32, func() []string) {
+	t.Helper()
+	var lists atomic.Int32
+	var mu sync.Mutex
+	var deleted []string
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /magnet/status", func(w http.ResponseWriter, r *http.Request) {
+		lists.Add(1)
+		items := make([]string, 0, magnets)
+		for i := 1; i <= magnets; i++ {
+			items = append(items, fmt.Sprintf(`{"id":%d,"filename":"m%d","statusCode":4,"uploadDate":%d}`, i, i, 100-i))
+		}
+		_, _ = fmt.Fprintf(w, `{"status":"success","data":{"magnets":[%s]}}`, strings.Join(items, ","))
+	})
+	mux.HandleFunc("GET /magnet/delete", func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		deleted = append(deleted, r.URL.Query().Get("id"))
+		mu.Unlock()
+		_, _ = fmt.Fprint(w, `{"status":"success","data":{"message":"deleted"}}`)
+	})
+	mux.HandleFunc("GET /magnet/upload", func(w http.ResponseWriter, r *http.Request) {
+		_, _ = fmt.Fprint(w, `{"status":"success","data":{"magnets":[{"id":99,"ready":true}]}}`)
+	})
+	server := httptest.NewServer(mux)
+	t.Cleanup(server.Close)
+	return server.URL, &lists, func() []string {
+		mu.Lock()
+		defer mu.Unlock()
+		return slices.Clone(deleted)
+	}
+}
+
+func TestSubmitMagnetSlotStrategy(t *testing.T) {
+	tests := map[string]struct {
+		strategy    string
+		limit       int
+		magnets     int
+		wantLists   int32
+		wantDeleted []string
+	}{
+		"unset never lists the account":  {strategy: "", limit: 2, magnets: 5, wantLists: 0},
+		"remove_after_add does not list": {strategy: "remove_after_add", limit: 2, magnets: 5, wantLists: 0},
+		"remove_oldest below the limit":  {strategy: "remove_oldest", limit: 3, magnets: 2, wantLists: 1},
+		"remove_oldest at the limit":     {strategy: "remove_oldest", limit: 3, magnets: 3, wantLists: 1, wantDeleted: []string{"3"}},
+		"remove_oldest removes one only": {strategy: "remove_oldest", limit: 2, magnets: 5, wantLists: 1, wantDeleted: []string{"5"}},
+	}
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			config.SetConfigPath(t.TempDir())
+			host, lists, deleted := slotServer(t, tc.magnets)
+			ad := testAllDebrid(host)
+			ad.config.SlotStrategy = tc.strategy
+			ad.config.Limit = tc.limit
+
+			got, err := ad.SubmitMagnet(&debridTypes.Torrent{Magnet: &utils.Magnet{Link: "magnet:?xt=urn:btih:abc"}})
+			if err != nil || got.Id != "99" {
+				t.Fatalf("SubmitMagnet() = %v, %v; want id 99", got, err)
+			}
+			if lists.Load() != tc.wantLists {
+				t.Errorf("magnet list calls = %d, want %d", lists.Load(), tc.wantLists)
+			}
+			if got := deleted(); fmt.Sprint(got) != fmt.Sprint(tc.wantDeleted) {
+				t.Errorf("deleted = %v, want %v", got, tc.wantDeleted)
+			}
+		})
 	}
 }
