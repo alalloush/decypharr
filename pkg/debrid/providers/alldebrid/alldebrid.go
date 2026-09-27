@@ -26,6 +26,7 @@ import (
 
 const (
 	defaultHost               = "https://api.alldebrid.com/v4.1"
+	allDebridReadyStatusCode  = 4
 	allDebridNoPeerStatusCode = 7
 )
 
@@ -34,7 +35,7 @@ type AllDebrid struct {
 	APIKey                string
 	accountsManager       *account.Manager
 	autoExpiresLinksAfter time.Duration
-	noPeerRetryBackoff    []time.Duration
+	statusRetryBackoff    []time.Duration
 	client                *request.Client
 	repairClient          *request.Client
 	Profile               *types.Profile `json:"profile"`
@@ -80,7 +81,7 @@ func New(dc config.Debrid, ratelimits map[string]ratelimit.Limiter) (*AllDebrid,
 		APIKey:                dc.APIKey,
 		accountsManager:       account.NewManager(dc, ratelimits["download"], _log),
 		autoExpiresLinksAfter: autoExpiresLinksAfter,
-		noPeerRetryBackoff:    defaultNoPeerRetryBackoff(),
+		statusRetryBackoff:    defaultStatusRetryBackoff(),
 		client:                request.New(opts...),
 		repairClient:          request.New(repairOpts...),
 		logger:                _log,
@@ -206,7 +207,7 @@ func (ad *AllDebrid) addMagnetLink(torrent *types.Torrent) (*types.Torrent, erro
 
 func getAlldebridStatus(statusCode int) types.TorrentStatus {
 	switch {
-	case statusCode == 4:
+	case statusCode == allDebridReadyStatusCode:
 		return types.TorrentStatusDownloaded
 	case statusCode >= 0 && statusCode <= 3, statusCode == allDebridNoPeerStatusCode:
 		return types.TorrentStatusDownloading
@@ -289,18 +290,39 @@ func (ad *AllDebrid) GetTorrent(torrentId string) (*types.Torrent, error) {
 	}
 	t.Bytes = data.Size
 	t.Seeders = data.Seeders
-	if status == "downloaded" {
-		t.Progress = 100
+	t.Status = ad.applyMagnetFiles(t, status, data)
+	return t, nil
+}
+
+// applyMagnetFiles fills in progress, speed and files from a magnet status
+// response. AllDebrid sometimes reports a magnet as ready (statusCode 4)
+// before the files list in that same /magnet/status response is actually
+// populated. Trusting that as a real completion used to leave decypharr with
+// a "downloaded" torrent that has zero files, so no symlink was ever created
+// for an otherwise finished download (see issues #113 and #122). When that
+// happens we report the torrent as still downloading instead, so the next
+// poll picks up the real file list.
+func (ad *AllDebrid) applyMagnetFiles(t *types.Torrent, status types.TorrentStatus, data magnetInfo) types.TorrentStatus {
+	if status == types.TorrentStatusDownloaded {
 		index := -1
 		files := ad.flattenFiles(t.Id, data.Files, "", &index)
-		t.Files = files
-	} else {
+		// Judge emptiness on the raw list: flattenFiles also drops files the
+		// allowed-extension/size filters reject, and a ready magnet whose
+		// files are all filtered out is still finished.
+		if len(data.Files) == 0 && data.Size > 0 {
+			status = types.TorrentStatusDownloading
+		} else {
+			t.Progress = 100
+			t.Files = files
+		}
+	}
+	if status != types.TorrentStatusDownloaded {
 		if data.Size > 0 {
 			t.Progress = float64(data.Downloaded) / float64(data.Size) * 100
 		}
 		t.Speed = data.DownloadSpeed
 	}
-	return t, nil
+	return status
 }
 
 func (ad *AllDebrid) updateTorrent(t *types.Torrent) (int, error) {
@@ -322,7 +344,6 @@ func (ad *AllDebrid) updateTorrent(t *types.Torrent) (int, error) {
 	status := getAlldebridStatus(data.StatusCode)
 	name := data.Filename
 	t.Name = name
-	t.Status = status
 	t.Filename = name
 	t.OriginalFilename = name
 	t.Debrid = ad.config.Name
@@ -332,17 +353,7 @@ func (ad *AllDebrid) updateTorrent(t *types.Torrent) (int, error) {
 		t.InfoHash = data.Hash
 	}
 	t.Added = time.Unix(data.CompletionDate, 0)
-	if status == "downloaded" {
-		t.Progress = 100
-		index := -1
-		files := ad.flattenFiles(t.Id, data.Files, "", &index)
-		t.Files = files
-	} else {
-		if data.Size > 0 {
-			t.Progress = float64(data.Downloaded) / float64(data.Size) * 100
-		}
-		t.Speed = data.DownloadSpeed
-	}
+	t.Status = ad.applyMagnetFiles(t, status, data)
 	return data.StatusCode, nil
 }
 
@@ -378,12 +389,21 @@ func (ad *AllDebrid) CheckStatus(torrent *types.Torrent) (*types.Torrent, error)
 		}
 	}
 
+	if statusCode == allDebridReadyStatusCode && torrent.Status != types.TorrentStatusDownloaded {
+		if err := ad.waitForReadyFiles(torrent); err != nil {
+			return torrent, err
+		}
+	}
+
 	switch torrent.Status {
 	case types.TorrentStatusDownloaded:
 		ad.logger.Info().Msgf("Torrent: %s downloaded", torrent.Name)
 		return torrent, nil
 	case types.TorrentStatusDownloading:
-		if !torrent.DownloadUncached {
+		// A ready magnet whose file list is still pending is cached on
+		// AllDebrid; leave it downloading so the queue picks up the files
+		// instead of rejecting it (and deleting it) as uncached.
+		if !torrent.DownloadUncached && statusCode != allDebridReadyStatusCode {
 			return torrent, fmt.Errorf("torrent %s: %w", torrent.Name, customerror.TorrentNotCachedError)
 		}
 		return torrent, nil
@@ -394,8 +414,32 @@ func (ad *AllDebrid) CheckStatus(torrent *types.Torrent) (*types.Torrent, error)
 	}
 }
 
-func defaultNoPeerRetryBackoff() []time.Duration {
+func defaultStatusRetryBackoff() []time.Duration {
 	return []time.Duration{250 * time.Millisecond, 500 * time.Millisecond, time.Second}
+}
+
+// waitForReadyFiles re-polls a magnet AllDebrid reports ready (status code 4)
+// but whose status response has no files yet. It stops once the files arrive
+// or the backoff runs out; in the latter case the torrent stays downloading.
+func (ad *AllDebrid) waitForReadyFiles(torrent *types.Torrent) error {
+	backoff := ad.statusRetryBackoff
+	if len(backoff) == 0 {
+		backoff = defaultStatusRetryBackoff()
+	}
+	for _, delay := range backoff {
+		time.Sleep(delay)
+		if _, err := ad.updateTorrent(torrent); err != nil {
+			return fmt.Errorf("check AllDebrid torrent %s for its file list: %w", torrent.Id, err)
+		}
+		if torrent.Status == types.TorrentStatusDownloaded {
+			return nil
+		}
+	}
+	ad.logger.Debug().
+		Str("torrent_id", torrent.Id).
+		Str("name", torrent.Name).
+		Msg("AllDebrid magnet is ready but its file list is still empty; will re-check")
+	return nil
 }
 
 func (ad *AllDebrid) restartNoPeerTorrent(torrent *types.Torrent) (int, error) {
@@ -408,9 +452,9 @@ func (ad *AllDebrid) restartNoPeerTorrent(torrent *types.Torrent) (int, error) {
 		return allDebridNoPeerStatusCode, fmt.Errorf("restart AllDebrid torrent %s after status code 7: %w", torrent.Id, err)
 	}
 
-	backoff := ad.noPeerRetryBackoff
+	backoff := ad.statusRetryBackoff
 	if len(backoff) == 0 {
-		backoff = defaultNoPeerRetryBackoff()
+		backoff = defaultStatusRetryBackoff()
 	}
 	for attempt, delay := range backoff {
 		time.Sleep(delay)
