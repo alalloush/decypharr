@@ -250,6 +250,43 @@ func TestStreamChunkClassifiesPrematureEOF(t *testing.T) {
 	}
 }
 
+// A truncated stream is transient whatever its byte offsets read like. Its
+// message used to be matched against "404", "401", "410"…, so a truncation at
+// such an offset tripped the circuit breaker at once and locked the file for
+// circuitCooldownDuration.
+func TestTruncatedStreamAtStatusLikeOffsetDoesNotTripCircuit(t *testing.T) {
+	const (
+		fileSize = int64(4 << 20)
+		start    = int64(1404928) // the message carries "1404928"
+	)
+	_, dls := newBenchItem(t, fileSize)
+	dl := &downloader{
+		dls:     dls,
+		ctx:     t.Context(),
+		session: &prematureEOFStream{Reader: bytes.NewReader(nil), size: fileSize},
+	}
+
+	_, err := dl.streamChunk(start, start+32<<10)
+	if !errors.Is(err, io.ErrUnexpectedEOF) {
+		t.Fatalf("streamChunk error = %v, want io.ErrUnexpectedEOF", err)
+	}
+	if customerror.IsPermanentError(err) || !customerror.IsRetriableError(err) {
+		t.Fatalf("truncation %q classified permanent=%v retriable=%v, want transient",
+			err, customerror.IsPermanentError(err), customerror.IsRetriableError(err))
+	}
+
+	dls.countErrors(0, err)
+	if dls.isCircuitOpen() {
+		t.Fatal("one truncated stream opened the circuit breaker")
+	}
+	dls.mu.Lock()
+	count := dls.errorCount
+	dls.mu.Unlock()
+	if count != 1 {
+		t.Fatalf("errorCount = %d, want 1", count)
+	}
+}
+
 func TestCacheWriterAcknowledgesCumulativePublishedRange(t *testing.T) {
 	item, dls := newBenchItem(t, 4<<20)
 	dl := &downloader{dls: dls}

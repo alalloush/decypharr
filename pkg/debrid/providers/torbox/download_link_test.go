@@ -10,6 +10,7 @@ import (
 
 	"github.com/rs/zerolog"
 	"github.com/sirrobot01/decypharr/internal/config"
+	"github.com/sirrobot01/decypharr/internal/customerror"
 	"github.com/sirrobot01/decypharr/pkg/debrid/account"
 	"github.com/sirrobot01/decypharr/pkg/debrid/types"
 )
@@ -98,6 +99,30 @@ func TestDownloadLinkRejectsFailedRequestdl(t *testing.T) {
 			}
 			if calls.Load() != 2 {
 				t.Fatalf("requestdl calls = %d, want 2 (a failure is not cached)", calls.Load())
+			}
+		})
+	}
+}
+
+// Only a rejected API token is permanent: the DFS circuit breaker trips on it
+// at once. 403 and 404 keep the link rules and are not permanent.
+func TestRequestdlStatusClassification(t *testing.T) {
+	for status, permanent := range map[int]bool{
+		http.StatusUnauthorized: true,
+		http.StatusForbidden:    false,
+		http.StatusNotFound:     false,
+	} {
+		t.Run(http.StatusText(status), func(t *testing.T) {
+			tb := linkTestTorbox(t, func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				http.Error(w, `{"success":false}`, status)
+			})
+			_, err := tb.GetDownloadLink(t.Context(), "7", &types.File{Id: "3", Name: "Release.mkv", Link: "torbox://7/3"})
+			if err == nil {
+				t.Fatal("GetDownloadLink() succeeded, want an error")
+			}
+			if got := customerror.IsPermanentError(err); got != permanent {
+				t.Fatalf("IsPermanentError(%v) = %v, want %v", err, got, permanent)
 			}
 		})
 	}

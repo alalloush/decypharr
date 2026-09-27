@@ -734,11 +734,17 @@ func (r *RealDebrid) fetchDownloadLink(ctx context.Context, account *account.Acc
 		case 23, 34, 36:
 			return emptyLink, customerror.TrafficExceededError
 		default:
-			return emptyLink, fmt.Errorf("realdebrid API error: Status: %d || Code: %d", resp.StatusCode, errResp.ErrorCode)
+			err := fmt.Errorf("realdebrid API error: Status: %d || Code: %d", resp.StatusCode, errResp.ErrorCode)
+			if resp.StatusCode == http.StatusUnauthorized {
+				// A rejected API token does not recover on retry. Other statuses
+				// stay untyped: the link rules keep 403/404/5xx non-permanent.
+				return emptyLink, customerror.NewPermanentError(err)
+			}
+			return emptyLink, err
 		}
 	}
 	if data.Download == "" {
-		return emptyLink, fmt.Errorf("realdebrid API error: download link not found")
+		return emptyLink, customerror.NewPermanentError(fmt.Errorf("realdebrid API error: download link not found"))
 	}
 	now := time.Now()
 	dl := types.DownloadLink{

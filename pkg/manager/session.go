@@ -696,22 +696,24 @@ func (m *Manager) OpenStreamForFile(ctx context.Context, info *FileInfo, offset 
 }
 
 func (m *Manager) openSession(ctx context.Context, entry *storage.Entry, filename string, offset int64, owner RewindOwner) (*session, string, string, error) {
+	// These fail the same way on every attempt, so they are typed permanent;
+	// retry classification does not read error text.
 	file, ok := entry.Files[filename]
 	if !ok {
-		return nil, "", "", fmt.Errorf("file %s not found in entry %s", filename, entry.Name)
+		return nil, "", "", link.NewPermanentError(fmt.Errorf("file %s not found in entry %s", filename, entry.Name), "file_not_found")
 	}
 	if file.Size <= 0 {
-		return nil, "", "", fmt.Errorf("file %s has invalid size %d", filename, file.Size)
+		return nil, "", "", link.NewPermanentError(fmt.Errorf("file %s has invalid size %d", filename, file.Size), "invalid_size")
 	}
 	if offset < 0 || offset > file.Size {
-		return nil, "", "", fmt.Errorf("offset %d out of range for %s (size %d)", offset, filename, file.Size)
+		return nil, "", "", link.NewPermanentError(fmt.Errorf("offset %d out of range for %s (size %d)", offset, filename, file.Size), "offset_out_of_range")
 	}
 
 	var t transport
 	source, debrid := "torrent", entry.ActiveProvider
 	if entry.Protocol == config.ProtocolNZB {
 		if m.usenet == nil {
-			return nil, "", "", fmt.Errorf("usenet client not configured")
+			return nil, "", "", link.NewPermanentError(fmt.Errorf("usenet client not configured"), "usenet_not_configured")
 		}
 		source, debrid = "nzb", ""
 		nzoID := entry.InfoHash

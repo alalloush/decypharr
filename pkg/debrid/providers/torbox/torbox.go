@@ -569,7 +569,13 @@ func (tb *Torbox) fetchDownloadLink(ctx context.Context, account *account.Accoun
 		return types.DownloadLink{}, fmt.Errorf("torbox requestdl: %w", err)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return types.DownloadLink{}, fmt.Errorf("torbox requestdl: HTTP %d", resp.StatusCode)
+		err := fmt.Errorf("torbox requestdl: HTTP %d", resp.StatusCode)
+		if resp.StatusCode == http.StatusUnauthorized {
+			// A rejected API token does not recover on retry. Other statuses
+			// stay untyped: the link rules keep 403/404/5xx non-permanent.
+			return types.DownloadLink{}, customerror.NewPermanentError(err)
+		}
+		return types.DownloadLink{}, err
 	}
 	if !res.Success || res.Data == nil || *res.Data == "" {
 		return types.DownloadLink{}, fmt.Errorf("torbox requestdl returned no link: %v %s", res.Error, res.Detail)

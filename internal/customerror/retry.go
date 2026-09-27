@@ -4,63 +4,42 @@ import (
 	"context"
 	"errors"
 	"io"
+	"io/fs"
 	"net"
-	"strings"
 	"syscall"
 )
 
-// These catch errors that aren't exported as typed errors.
-var retriableErrorStrings = []string{
-	"use of closed network connection",
-	"unexpected EOF",
-	"connection reset by peer",
-	"connection refused",
-	"broken pipe",
-	"i/o timeout",
-	"TLS handshake timeout",
-	"no such host",
-	"server misbehaving",
-	"connection timed out",
-	"network is unreachable",
-	"no route to host",
-	"transport connection broken",
-	"http2: client connection lost",
-	"http2: server sent GOAWAY",
-	"http2: timeout awaiting",
-	"stream error:",
-	"bad record MAC",
-	"server closed idle connection",
-	"client connection force closed",
-	"context deadline exceeded",
+// Classification uses types only. Error text is never parsed: messages carry
+// provider bodies, file names and byte offsets, so a stream truncated at
+// offset 2147404800 would contain "404" and "Gone Girl" would contain "gone".
+// Errors with no typed signal are neither retriable nor permanent. The DFS
+// downloader counts them towards its circuit breaker without retrying them
+// locally.
+
+// retryDecider is implemented by errors that carry an explicit retry decision:
+// customerror.Error, link.Error and nntp.Error.
+type retryDecider interface {
+	error
+	IsRetryable() bool
 }
 
-var permanentErrorStrings = []string{
-	"404",
-	"not found",
-	"403",
-	"forbidden",
-	"401",
-	"unauthorized",
-	"402",
-	"payment required",
-	"410",
-	"gone",
-	"invalid api key",
-	"file not exist",
-	"no such file",
+type permanenceDecider interface {
+	error
+	IsPermanent() bool
 }
 
-// IsRetriableError returns true if the error is likely transient and should be retried.
+// IsRetriableError reports whether err is known to be transient, so repeating
+// the operation can succeed. Only these count:
+//   - an explicit decision carried by a typed error in the chain;
+//   - a context deadline, an unexpected EOF or a closed pipe or connection;
+//   - a network or transport failure the standard library reports as a type or
+//     an errno.
 func IsRetriableError(err error) bool {
 	if err == nil {
 		return false
 	}
 
-	// Typed retry rules take precedence over message text.
-	if r, ok := errors.AsType[interface {
-		error
-		IsRetryable() bool
-	}](err); ok {
+	if r, ok := errors.AsType[retryDecider](err); ok {
 		return r.IsRetryable()
 	}
 
@@ -68,79 +47,59 @@ func IsRetriableError(err error) bool {
 		return false
 	}
 
-	if errors.Is(err, context.DeadlineExceeded) {
-		return true
-	}
-
-	if errors.Is(err, context.Canceled) {
+	switch {
+	case errors.Is(err, context.Canceled):
 		return false
-	}
-
-	if errors.Is(err, io.ErrUnexpectedEOF) {
+	case errors.Is(err, context.DeadlineExceeded),
+		errors.Is(err, io.ErrUnexpectedEOF),
+		// The remote end closed the pipe or connection mid-transfer; retry as
+		// for EPIPE.
+		errors.Is(err, io.ErrClosedPipe),
+		errors.Is(err, net.ErrClosed):
 		return true
 	}
 
-	// io.ErrClosedPipe means the underlying pipe/connection was closed mid-transfer.
-	// This is transient (the remote end reset) and should be retried like EPIPE.
-	if errors.Is(err, io.ErrClosedPipe) {
+	// *net.OpError covers dial, read and write failures, and the TLS alerts
+	// crypto/tls reports as local or remote errors. *net.DNSError covers
+	// resolver failures.
+	if _, ok := errors.AsType[*net.OpError](err); ok {
 		return true
 	}
-
+	if _, ok := errors.AsType[*net.DNSError](err); ok {
+		return true
+	}
 	if netErr, ok := errors.AsType[net.Error](err); ok && netErr.Timeout() {
 		return true
 	}
 
-	if errors.Is(err, syscall.ECONNRESET) ||
+	return errors.Is(err, syscall.ECONNRESET) ||
 		errors.Is(err, syscall.ECONNREFUSED) ||
 		errors.Is(err, syscall.ECONNABORTED) ||
 		errors.Is(err, syscall.EPIPE) ||
 		errors.Is(err, syscall.ETIMEDOUT) ||
 		errors.Is(err, syscall.ENETUNREACH) ||
-		errors.Is(err, syscall.EHOSTUNREACH) {
-		return true
-	}
-
-	errStr := strings.ToLower(err.Error())
-	for _, pattern := range retriableErrorStrings {
-		if strings.Contains(errStr, strings.ToLower(pattern)) {
-			return true
-		}
-	}
-
-	unwrapped := errors.Unwrap(err)
-	if unwrapped != nil && !errors.Is(unwrapped, err) {
-		return IsRetriableError(unwrapped)
-	}
-
-	return false
+		errors.Is(err, syscall.EHOSTUNREACH)
 }
 
-// IsPermanentError returns true if the error should NOT be retried.
-// These are typically 4xx HTTP errors or explicit access denials.
+// IsPermanentError reports whether retrying err cannot help. Only these count:
+//   - an explicit decision carried by a typed error;
+//   - a missing file.
+//
+// HTTP statuses count only once they are typed: the link package classifies
+// CDN and validation statuses, and providers mark a rejected API token (401)
+// permanent. That matches the link rules: 400, 404, 410, 5xx and unknown codes
+// are not permanent there either (upstream #369, #381, #402).
 func IsPermanentError(err error) bool {
 	if err == nil {
 		return false
 	}
 
-	if p, ok := errors.AsType[interface {
-		error
-		IsPermanent() bool
-	}](err); ok {
+	if p, ok := errors.AsType[permanenceDecider](err); ok {
 		return p.IsPermanent()
 	}
-	if r, ok := errors.AsType[interface {
-		error
-		IsRetryable() bool
-	}](err); ok {
+	if r, ok := errors.AsType[retryDecider](err); ok {
 		return !r.IsRetryable()
 	}
 
-	errStr := strings.ToLower(err.Error())
-	for _, pattern := range permanentErrorStrings {
-		if strings.Contains(errStr, pattern) {
-			return true
-		}
-	}
-
-	return false
+	return errors.Is(err, fs.ErrNotExist)
 }

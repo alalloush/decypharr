@@ -120,7 +120,7 @@ func (s *Service) Refresh(ctx context.Context, entry *storage.Entry, bad types.D
 func (s *Service) getClient(provider string) (debrid.Client, error) {
 	c, ok := s.clients.Load(provider)
 	if !ok {
-		return nil, fmt.Errorf("client for provider %s not found", provider)
+		return nil, NewPermanentError(fmt.Errorf("client for provider %s not found", provider), "client_not_found")
 	}
 	return c, nil
 }
@@ -302,10 +302,7 @@ func (s *Service) fetchLink(ctx context.Context, entry *storage.Entry, filename 
 
 	client, err := s.getClient(entry.ActiveProvider)
 	if err != nil {
-		return emptyDownloadLink, NewPermanentError(
-			fmt.Errorf("debrid client not found: %s", entry.ActiveProvider),
-			"client_not_found",
-		)
+		return emptyDownloadLink, err
 	}
 
 	placement := entry.Providers[entry.ActiveProvider]
