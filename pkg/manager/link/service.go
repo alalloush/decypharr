@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"runtime/debug"
 	"strconv"
 	"time"
 
@@ -28,6 +29,13 @@ const (
 	// Prevents hammering the provider API when a file is persistently
 	// unavailable (still processing or genuinely gone from the debrid cache).
 	refetchCooldownDuration = 5 * time.Minute
+
+	// defaultFetchTimeout bounds one shared link fetch. The fetch runs detached
+	// from the callers waiting on it (see shared), and every later GetLink or
+	// Refresh for the same file joins it. Without this bound, a hung provider
+	// or CDN call would hold the file until the process restarts. Two minutes
+	// is enough for the provider client's retries and a re-insertion.
+	defaultFetchTimeout = 2 * time.Minute
 )
 
 var (
@@ -51,6 +59,7 @@ type Service struct {
 	entrySaver       EntrySaver
 	httpClient       *http.Client
 	retries          int
+	fetchTimeout     time.Duration
 	logger           zerolog.Logger
 }
 
@@ -73,6 +82,7 @@ func New(
 		entrySaver:       entrySaver,
 		httpClient:       httpClient,
 		retries:          retries,
+		fetchTimeout:     defaultFetchTimeout,
 		logger:           logger,
 	}
 }
@@ -80,17 +90,9 @@ func New(
 // GetLink fetches and validates a download link for a file in an entry.
 // Links are cached at the account level; this service only tracks validation state.
 func (s *Service) GetLink(ctx context.Context, entry *storage.Entry, filename string) (types.DownloadLink, error) {
-	// Use singleflight to deduplicate concurrent requests for the same file
-	key := entry.InfoHash + ":" + filename
-	v, err, _ := s.singleflight.Do(key, func() (any, error) {
+	return s.shared(ctx, entry.InfoHash+":"+filename, func(ctx context.Context) (types.DownloadLink, error) {
 		return s.fetchAndValidate(ctx, entry, filename, 0)
 	})
-
-	if err != nil {
-		return emptyDownloadLink, err
-	}
-
-	return v.(types.DownloadLink), nil
 }
 
 // Refresh invalidates a link that failed mid-stream and fetches a replacement.
@@ -102,7 +104,7 @@ func (s *Service) Refresh(ctx context.Context, entry *storage.Entry, bad types.D
 		return emptyDownloadLink, NewPermanentError(ErrEmptyLink, "empty_link")
 	}
 	key := entry.InfoHash + ":" + bad.Filename
-	v, err, _ := s.singleflight.Do(key, func() (any, error) {
+	return s.shared(ctx, key, func(ctx context.Context) (types.DownloadLink, error) {
 		// While a failed validation has this file on refetch cooldown, a
 		// mid-stream failure must not call the provider either; the next
 		// GetLink re-validates the current link instead.
@@ -111,10 +113,41 @@ func (s *Service) Refresh(ctx context.Context, entry *storage.Entry, bad types.D
 		}
 		return s.invalidateAndRefetch(ctx, entry, bad, 0)
 	})
-	if err != nil {
+}
+
+// shared runs fetch once for all concurrent callers of key. The fetch keeps
+// the first caller's context values but not its cancellation or deadline;
+// fetchTimeout bounds it instead. A caller that gives up, such as a closed
+// WebDAV request or an aborted repair, therefore does not fail the DFS
+// downloaders waiting on the same file. Each caller still returns as soon as
+// its own ctx is done.
+func (s *Service) shared(ctx context.Context, key string, fetch func(context.Context) (types.DownloadLink, error)) (types.DownloadLink, error) {
+	if err := ctx.Err(); err != nil {
 		return emptyDownloadLink, err
 	}
-	return v.(types.DownloadLink), nil
+	results := s.singleflight.DoChan(key, func() (v any, err error) {
+		// DoChan re-raises a panic on a goroutine nothing can recover, which
+		// would take the mount down with it. Fail this fetch instead.
+		defer func() {
+			if r := recover(); r != nil {
+				s.logger.Error().Str("key", key).Interface("panic", r).Bytes("stack", debug.Stack()).Msg("Link fetch panicked")
+				err = customerror.NewPanicError(r)
+			}
+		}()
+		fetchCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), s.fetchTimeout)
+		defer cancel()
+		dl, fetchErr := fetch(fetchCtx)
+		return dl, fetchErr
+	})
+	select {
+	case res := <-results:
+		if res.Err != nil {
+			return emptyDownloadLink, res.Err
+		}
+		return res.Val.(types.DownloadLink), nil
+	case <-ctx.Done():
+		return emptyDownloadLink, ctx.Err()
+	}
 }
 
 func (s *Service) getClient(provider string) (debrid.Client, error) {
