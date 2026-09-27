@@ -279,13 +279,13 @@ func (f *FS) Read(path string, buff []byte, off int64, fh uint64) int {
 	defer cancel()
 
 	n, err := handle.reader.ReadAtContext(readCtx, buff[:size], off)
-	if err != nil && n == 0 {
+	// StreamingFile reports io.EOF only at the end of the file. Any other
+	// error is returned even when some bytes arrived: a short successful read
+	// is what the kernel and players take for the end of the file.
+	if err != nil && !errors.Is(err, io.EOF) {
 		switch {
 		case errors.Is(err, syscall.EBADF):
 			return -fuse.EBADF
-		case errors.Is(err, io.EOF):
-			// EOF is not an error for FUSE Read
-			return 0
 		case errors.Is(err, context.DeadlineExceeded):
 			return -fuse.ETIMEDOUT
 		case errors.Is(err, context.Canceled):

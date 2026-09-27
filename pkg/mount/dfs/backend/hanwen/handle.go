@@ -61,15 +61,19 @@ func (fh *Handle) Read(ctx context.Context, dest []byte, off int64) (fuse.ReadRe
 	defer cancel()
 
 	n, err := fh.streamFile.ReadAtContext(readCtx, dest, off)
-	if err != nil && !skippableError(err) {
+	// StreamingFile reports io.EOF only at the end of the file. Any other
+	// error must reach the caller: a short successful read here is what the
+	// kernel and players take for the end of the file.
+	if err != nil && !errors.Is(err, io.EOF) {
 		switch {
 		case errors.Is(err, syscall.EBADF):
 			return nil, syscall.EBADF
-		case errors.Is(err, io.EOF):
-			return fuse.ReadResultData(dest[:n]), 0
 		case errors.Is(err, context.DeadlineExceeded):
 			return nil, syscall.ETIMEDOUT
 		case errors.Is(err, context.Canceled):
+			// The kernel interrupted the request, or the download under it was
+			// stopped. go-fuse expects EINTR for an honoured interrupt, and
+			// readers retry EINTR.
 			return nil, syscall.EINTR
 		default:
 			return nil, syscall.EIO
