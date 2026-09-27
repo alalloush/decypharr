@@ -56,6 +56,7 @@ Indexes 0 to 9. The other keys of an index apply only when that index's `NAME` i
 | `DECYPHARR_DEBRIDS__N__FOLDER` | `debrids[N].folder` | string | Deprecated field. |
 | `DECYPHARR_DEBRIDS__N__PROXY` | `debrids[N].proxy` | string | HTTP(S) or `socks5://` proxy URL. |
 | `DECYPHARR_DEBRIDS__N__API_HOST` | `debrids[N].api_host` | string | Fork addition. API base URL override (scheme, host, version path) for fake providers in tests. Empty keeps the provider's public API. |
+| `DECYPHARR_DEBRIDS__N__KEEP_IN_SYNC` | `debrids[N].keep_in_sync` | bool | Fork addition (upstream #275, part a). Adopts finished provider torrents that nothing owns yet as completed downloads in category `other`. |
 
 ## Arr applications
 

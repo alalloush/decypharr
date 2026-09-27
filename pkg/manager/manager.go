@@ -67,6 +67,8 @@ type Manager struct {
 	// downloading
 	refreshSG   singleflight.Group
 	linkService *link.Service
+	// keepInSyncMu serializes keep_in_sync adoption across provider refreshes.
+	keepInSyncMu sync.Mutex
 
 	// repair
 	fixer *Fixer

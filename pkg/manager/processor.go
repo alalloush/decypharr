@@ -28,8 +28,10 @@ func (m *Manager) AddNewTorrent(ctx context.Context, importReq *ImportRequest) e
 	return m.torrentSubmissions.Do(ctx, torrentSubmissionKey(importReq), func() error {
 		// qBittorrent treats adding an existing hash as an idempotent success.
 		// Check again inside the singleflight call so concurrent requests cannot
-		// both pass the lookup and submit the same hash to a provider.
-		if _, err := m.queue.GetTorrent(importReq.Magnet.InfoHash); err == nil {
+		// both pass the lookup and submit the same hash to a provider. A row
+		// adopted by keep_in_sync is the exception: the import replaces it, so
+		// the Arr finds the torrent under its own category.
+		if queued, err := m.queue.GetTorrent(importReq.Magnet.InfoHash); err == nil && !isKeepInSyncEntry(queued) {
 			return nil
 		}
 		return m.addNewTorrent(ctx, importReq)

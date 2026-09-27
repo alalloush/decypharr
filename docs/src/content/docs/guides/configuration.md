@@ -127,6 +127,22 @@ Array of Debrid services:
 | `auto_expire_links_after`         | string | Auto-remove links after duration                                               | `24h`                           |
 | `user_agent`                      | string | Custom User-Agent header                                                       | Default                         |
 | `api_host`                        | string | API base URL override (scheme, host and version path) for fake/test providers. Not shown in the web UI; saving settings there drops it | Provider's public API |
+| `keep_in_sync`                    | bool   | Adopt finished torrents added outside Decypharr (for example with Debrid Media Manager) as completed downloads in category `other`. See [Torrents added outside Decypharr](#torrents-added-outside-decypharr) | `false` |
+
+### Torrents added outside Decypharr
+
+The mount lists every torrent in your provider accounts, including torrents added with Debrid Media Manager (DMM) or on the provider's website. Only torrents added through Decypharr appear in the dashboard and the qBittorrent API.
+
+With `keep_in_sync` on, each torrent refresh adopts the finished torrents of that provider that nothing owns yet. They appear as completed downloads in category `other`. A [virtual folder](/guides/virtual-folders/) with the condition Category is exactly `other` shows them as one folder in the mount.
+
+- Adoption only records the torrent. Nothing is downloaded, symlinked or cache-warmed, no notification is sent, and it makes no extra provider API calls.
+- A torrent held by several providers is adopted once.
+- Torrents added by an Arr are never adopted, even after the Arr removes them from the queue.
+- Deleting an adopted torrent in the dashboard is final: it is not adopted again while the provider still holds it.
+- When an Arr grabs an adopted torrent, the Arr's download replaces the adopted one.
+- When the torrent is gone from every provider, its adopted download is removed.
+- On TorBox Pro, finished usenet downloads are adopted too, since they are listed like torrents.
+- Changing the setting restarts Decypharr.
 
 ## Usenet
 
