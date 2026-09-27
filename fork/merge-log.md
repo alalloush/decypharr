@@ -108,3 +108,42 @@ Full suite on `dev` 2c86465 with `GOTOOLCHAIN=go1.26.5`: 38 packages pass. Two t
 ### Build note
 
 Rebuild `pkg/server/assets/build/js` with `npm ci --ignore-scripts && node scripts/minify-js.js`. The pinned terser reproduces the committed files byte for byte.
+
+## Round 3 — audit fixes, 2026-09-27
+
+Fixes for the findings in `research/audit.md`. Every fix has a test that fails without it.
+
+| ID | Change | Deployment impact |
+|---|---|---|
+| H1 | `/browse` XSS fixed. UI HTML sinks are escaped, all inline handlers are gone, and a per-request nonce CSP is set. `GET /api/config` masks secrets as `********`; a save keeps them unless they are replaced or cleared, and it refuses to keep a secret whose destination changed. | Re-enter a secret after changing its provider/host/proxy. |
+| H2 | WebDAV and `/stream` require auth whenever `use_auth` is on (UI login, or the API token as Basic password/Bearer). No wildcard CORS. `DELETE` returns 403 unless `webdav_allow_delete`. `enable_webdav_auth` is removed. | WebDAV clients (rclone, players) need credentials when `use_auth` is on. |
+| H3 | TLS verification is on for every outbound client. Per-provider opt-out: `insecure_skip_verify`. | Arr/rclone endpoints with a private CA need that CA trusted (`SSL_CERT_FILE`). |
+| H4 | Hearsay joins the public P2P network only on opt-in (`hearsay.participate=true`). `-tags nohearsay` builds a stub. | It stops participating unless you opt in. |
+| M1 | Tokens and API keys are redacted from URLs in errors and logs. | |
+| M2 | Retry/permanent classification uses error types, not message text. | Fewer false 2-minute circuit trips on DFS. |
+| M3 | FUSE returns EINTR/ETIMEDOUT/EIO instead of short successful reads. | Players see errors instead of an early EOF. |
+| M4 | Shared link fetches outlive their first caller (2-minute cap); each caller honours its own ctx. | |
+| M5 | DFS metadata writers park when idle. | |
+| M6/M7 | Evaluated, not changed: `research/dfs-memory-disk.md`. | |
+| M8 | HTTP timeouts (header 10 s, idle 2 min, none on streams). A bind failure exits with status 1. | |
+| M9 | The first stats snapshot is taken asynchronously; startup no longer waits for providers. | |
+| M10 | Go 1.26.6 (stdlib CVEs); sonic v1.15.4. The drain tests are version-agnostic. | Rebuild the image. |
+| M11 | One rate budget per provider: RD ≤240/min process-wide, TorBox ≤288/min per key, others 250/min. Retries take permits. | `rate_limit` is now a hard cap. |
+| L1 | Provider profile caches are synchronised (singleflight, 1 h TTL). | |
+| L4 | WebDAV COPY/MOVE return 405. | |
+| L5 | Compact JSON responses. | |
+| L6 | pprof binds to 127.0.0.1:6060 by default. | |
+| L7 | The session cookie is `Secure` behind HTTPS or `X-Forwarded-Proto: https`. | |
+| L8 | IPv6 bind addresses work. | |
+| #191 | URL-base-aware redirects (upstream PR, adapted). | |
+| qBit | `hashes` split on `|`; addTags/removeTags without hashes → 400. | |
+
+Deferred: L10/L11 (refresh invalidation and cancellation); plans are in the DfsFix report and `research/audit.md`.
+
+### Test status
+
+On `dev` after round 3: `go vet` is clean. `go test ./...` passes on Go 1.26.6 (43 packages) and 1.27.1. `-race` is clean on manager, mount, server, debrid and internal. `-tags nohearsay` builds.
+
+### Toolchain
+
+Hold at Go 1.26.x. Move to go1.27.2+ once it ships (golang/go#81404, a net/http Read/Close deadlock in 1.27.1, affects streaming).
