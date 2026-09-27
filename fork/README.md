@@ -1,6 +1,6 @@
 # al's decypharr fork
 
-Base: upstream `beta` `249ac9e` (2026-09-16). Working branch: `dev`. Remotes: `origin` = alalloush/decypharr (fork), `upstream` = sirrobot01/decypharr (read-only; nothing is posted upstream).
+Base: upstream `beta` `249ac9e` (2026-09-16). Working branch: `dev`. Remotes: `private` = git.por.re:al/decypharr (where work is pushed), `upstream` = sirrobot01/decypharr (read-only; nothing is posted upstream), `github` = alalloush/decypharr (pushes disabled).
 
 Plan: merge open upstream PRs and fix issues, Real-Debrid and TorBox first. Alongside that work, build the language-neutral spec in `fork/spec/`. A later port is verified against this Go fork. No Rust or Bun code for now.
 
