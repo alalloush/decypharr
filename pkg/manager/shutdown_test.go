@@ -34,6 +34,10 @@ func (c completedTorrentProvider) CheckStatus(*types.Torrent) (*types.Torrent, e
 	return c.torrent, nil
 }
 
+func (c completedTorrentProvider) Config() config.Debrid {
+	return config.Debrid{Name: "provider", Provider: "realdebrid"}
+}
+
 func TestShutdownResumesInterruptedSymlinks(t *testing.T) {
 	for _, multiSeason := range []bool{false, true} {
 		t.Run(map[bool]string{false: "single release", true: "season pack"}[multiSeason], func(t *testing.T) {

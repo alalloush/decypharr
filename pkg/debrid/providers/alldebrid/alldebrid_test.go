@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -14,6 +16,7 @@ import (
 	"github.com/sirrobot01/decypharr/internal/config"
 	"github.com/sirrobot01/decypharr/internal/customerror"
 	"github.com/sirrobot01/decypharr/internal/request"
+	"github.com/sirrobot01/decypharr/internal/utils"
 	debridTypes "github.com/sirrobot01/decypharr/pkg/debrid/types"
 )
 
@@ -222,12 +225,158 @@ func TestCheckStatusDoesNotRestartTerminalStatus(t *testing.T) {
 	}
 }
 
+// AllDebrid can answer statusCode 4 (ready) with an empty files array in the
+// same response, before it has actually populated the file list. We used to
+// trust that as a real completion, so decypharr went ahead and created zero
+// symlinks for a torrent that was, from AllDebrid's own account page, fully
+// downloaded (issue #113, #122). GetTorrent should now report this as still
+// downloading instead of downloaded.
+func TestGetTorrentTreatsReadyWithNoFilesAsStillDownloading(t *testing.T) {
+	config.SetConfigPath(t.TempDir())
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprint(w, `{"status":"success","data":{"magnets":[{"id":1,"filename":"Release.mkv","statusCode":4,"size":1000,"downloaded":1000,"files":[]}]}}`)
+	}))
+	t.Cleanup(server.Close)
+
+	ad := testAllDebrid(server.URL)
+	torrent, err := ad.GetTorrent("1")
+	if err != nil {
+		t.Fatalf("GetTorrent() error = %v", err)
+	}
+	if torrent.Status != debridTypes.TorrentStatusDownloading {
+		t.Fatalf("Status = %q, want %q for a ready magnet with no files yet", torrent.Status, debridTypes.TorrentStatusDownloading)
+	}
+	if len(torrent.Files) != 0 {
+		t.Fatalf("Files = %v, want none", torrent.Files)
+	}
+}
+
+// A magnet that is genuinely ready, with its files populated, should still
+// be reported as downloaded.
+func TestGetTorrentKeepsDownloadedWhenFilesArePresent(t *testing.T) {
+	config.SetConfigPath(t.TempDir())
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprint(w, `{"status":"success","data":{"magnets":[{"id":1,"filename":"Release.mkv","statusCode":4,"size":1000,"downloaded":1000,"files":[{"n":"Release.mkv","s":1000,"l":"https://alldebrid.com/f/xyz"}]}]}}`)
+	}))
+	t.Cleanup(server.Close)
+
+	ad := testAllDebrid(server.URL)
+	torrent, err := ad.GetTorrent("1")
+	if err != nil {
+		t.Fatalf("GetTorrent() error = %v", err)
+	}
+	if torrent.Status != debridTypes.TorrentStatusDownloaded {
+		t.Fatalf("Status = %q, want %q", torrent.Status, debridTypes.TorrentStatusDownloaded)
+	}
+	if len(torrent.Files) != 1 {
+		t.Fatalf("Files = %v, want 1 file", torrent.Files)
+	}
+	if torrent.Progress != 100 {
+		t.Fatalf("Progress = %v, want 100", torrent.Progress)
+	}
+}
+
+// updateTorrent backs UpdateTorrent/CheckStatus, the path the active
+// downloader polls while a torrent is in progress, so it needs the same
+// guard as GetTorrent.
+func TestUpdateTorrentTreatsReadyWithNoFilesAsStillDownloading(t *testing.T) {
+	config.SetConfigPath(t.TempDir())
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprint(w, `{"status":"success","data":{"magnets":[{"id":1,"filename":"Release.mkv","statusCode":4,"size":1000,"downloaded":1000,"files":[]}]}}`)
+	}))
+	t.Cleanup(server.Close)
+
+	ad := testAllDebrid(server.URL)
+	torrent := &debridTypes.Torrent{Id: "1"}
+	if err := ad.UpdateTorrent(torrent); err != nil {
+		t.Fatalf("UpdateTorrent() error = %v", err)
+	}
+	if torrent.Status != debridTypes.TorrentStatusDownloading {
+		t.Fatalf("Status = %q, want %q for a ready magnet with no files yet", torrent.Status, debridTypes.TorrentStatusDownloading)
+	}
+}
+
+// A ready magnet whose only files are rejected by the allowed-file filters is
+// finished; it must not be held as downloading forever.
+func TestGetTorrentKeepsDownloadedWhenAllFilesAreFiltered(t *testing.T) {
+	config.SetConfigPath(t.TempDir())
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprint(w, `{"status":"success","data":{"magnets":[{"id":1,"filename":"Release","statusCode":4,"size":1000,"downloaded":1000,"files":[{"n":"Release.xyz","s":1000,"l":"https://alldebrid.com/f/xyz"}]}]}}`)
+	}))
+	t.Cleanup(server.Close)
+
+	torrent, err := testAllDebrid(server.URL).GetTorrent("1")
+	if err != nil {
+		t.Fatalf("GetTorrent() error = %v", err)
+	}
+	if torrent.Status != debridTypes.TorrentStatusDownloaded {
+		t.Fatalf("Status = %q, want %q", torrent.Status, debridTypes.TorrentStatusDownloaded)
+	}
+}
+
+func readyMagnetServer(t *testing.T, filesAfter int32) (*httptest.Server, *atomic.Int32) {
+	t.Helper()
+	var polls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		files := `[]`
+		if n := polls.Add(1); filesAfter > 0 && n >= filesAfter {
+			files = `[{"n":"Release.mkv","s":1000,"l":"https://alldebrid.com/f/xyz"}]`
+		}
+		_, _ = fmt.Fprintf(w, `{"status":"success","data":{"magnets":[{"id":1,"filename":"Release.mkv","statusCode":4,"size":1000,"downloaded":1000,"files":%s}]}}`, files)
+	}))
+	t.Cleanup(server.Close)
+	return server, &polls
+}
+
+// With download_uncached=false, a ready magnet whose file list lags must not
+// be rejected as uncached (which deletes it); CheckStatus re-polls for files.
+func TestCheckStatusWaitsForReadyMagnetFiles(t *testing.T) {
+	config.SetConfigPath(t.TempDir())
+	server, polls := readyMagnetServer(t, 3)
+
+	got, err := testAllDebrid(server.URL).CheckStatus(&debridTypes.Torrent{Id: "1"})
+	if err != nil {
+		t.Fatalf("CheckStatus() error = %v", err)
+	}
+	if got.Status != debridTypes.TorrentStatusDownloaded || len(got.Files) != 1 {
+		t.Fatalf("Status = %q, files = %d; want downloaded with 1 file", got.Status, len(got.Files))
+	}
+	if polls.Load() != 3 {
+		t.Fatalf("status polls = %d, want 3", polls.Load())
+	}
+}
+
+func TestCheckStatusLeavesReadyMagnetWithoutFilesDownloading(t *testing.T) {
+	config.SetConfigPath(t.TempDir())
+	server, polls := readyMagnetServer(t, 0)
+
+	got, err := testAllDebrid(server.URL).CheckStatus(&debridTypes.Torrent{Id: "1"})
+	if err != nil {
+		t.Fatalf("CheckStatus() error = %v, want nil for a ready magnet", err)
+	}
+	if got.Status != debridTypes.TorrentStatusDownloading {
+		t.Fatalf("Status = %q, want %q", got.Status, debridTypes.TorrentStatusDownloading)
+	}
+	if polls.Load() != 4 {
+		t.Fatalf("status polls = %d, want 1 + 3 retries", polls.Load())
+	}
+}
+
 func testAllDebrid(host string) *AllDebrid {
 	return &AllDebrid{
 		Host:               host,
 		client:             request.New(request.WithMaxRetries(0)),
 		config:             config.Debrid{Name: "alldebrid"},
-		noPeerRetryBackoff: []time.Duration{0, 0, 0},
+		statusRetryBackoff: []time.Duration{0, 0, 0},
 	}
 }
 
@@ -235,5 +384,100 @@ func TestAvailabilityReportsUnsupported(t *testing.T) {
 	result, err := (&AllDebrid{}).IsAvailable([]string{"hash"})
 	if err != debridTypes.ErrAvailabilityUnsupported || result != nil {
 		t.Fatalf("IsAvailable = %v, %v", result, err)
+	}
+}
+
+// torrentLimit caps what a configured `limit` can request; it never lets a
+// user push AllDebrid's own ~5000 ceiling higher, and still lets them set a
+// lower, self-imposed one.
+func TestTorrentLimit(t *testing.T) {
+	cases := []struct {
+		name  string
+		limit int
+		want  int
+	}{
+		{"unset defaults to the cap", 0, maxTorrentLimit},
+		{"negative defaults to the cap", -1, maxTorrentLimit},
+		{"below the cap is honoured", 1000, 1000},
+		{"exactly at the cap is honoured", maxTorrentLimit, maxTorrentLimit},
+		{"above the cap is clamped down", 9000, maxTorrentLimit},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			ad := &AllDebrid{config: config.Debrid{Limit: c.limit}}
+			if got := ad.torrentLimit(); got != c.want {
+				t.Errorf("torrentLimit() with configured limit %d = %d, want %d", c.limit, got, c.want)
+			}
+		})
+	}
+}
+
+// slotServer lists `magnets` (id i uploaded at time 100-i, so the highest id is
+// the oldest), records /magnet/delete ids and accepts any upload as id 99.
+func slotServer(t *testing.T, magnets int) (string, *atomic.Int32, func() []string) {
+	t.Helper()
+	var lists atomic.Int32
+	var mu sync.Mutex
+	var deleted []string
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /magnet/status", func(w http.ResponseWriter, r *http.Request) {
+		lists.Add(1)
+		items := make([]string, 0, magnets)
+		for i := 1; i <= magnets; i++ {
+			items = append(items, fmt.Sprintf(`{"id":%d,"filename":"m%d","statusCode":4,"uploadDate":%d}`, i, i, 100-i))
+		}
+		_, _ = fmt.Fprintf(w, `{"status":"success","data":{"magnets":[%s]}}`, strings.Join(items, ","))
+	})
+	mux.HandleFunc("GET /magnet/delete", func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		deleted = append(deleted, r.URL.Query().Get("id"))
+		mu.Unlock()
+		_, _ = fmt.Fprint(w, `{"status":"success","data":{"message":"deleted"}}`)
+	})
+	mux.HandleFunc("GET /magnet/upload", func(w http.ResponseWriter, r *http.Request) {
+		_, _ = fmt.Fprint(w, `{"status":"success","data":{"magnets":[{"id":99,"ready":true}]}}`)
+	})
+	server := httptest.NewServer(mux)
+	t.Cleanup(server.Close)
+	return server.URL, &lists, func() []string {
+		mu.Lock()
+		defer mu.Unlock()
+		return slices.Clone(deleted)
+	}
+}
+
+func TestSubmitMagnetSlotStrategy(t *testing.T) {
+	tests := map[string]struct {
+		strategy    string
+		limit       int
+		magnets     int
+		wantLists   int32
+		wantDeleted []string
+	}{
+		"unset never lists the account":  {strategy: "", limit: 2, magnets: 5, wantLists: 0},
+		"remove_after_add does not list": {strategy: "remove_after_add", limit: 2, magnets: 5, wantLists: 0},
+		"remove_oldest below the limit":  {strategy: "remove_oldest", limit: 3, magnets: 2, wantLists: 1},
+		"remove_oldest at the limit":     {strategy: "remove_oldest", limit: 3, magnets: 3, wantLists: 1, wantDeleted: []string{"3"}},
+		"remove_oldest removes one only": {strategy: "remove_oldest", limit: 2, magnets: 5, wantLists: 1, wantDeleted: []string{"5"}},
+	}
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			config.SetConfigPath(t.TempDir())
+			host, lists, deleted := slotServer(t, tc.magnets)
+			ad := testAllDebrid(host)
+			ad.config.SlotStrategy = tc.strategy
+			ad.config.Limit = tc.limit
+
+			got, err := ad.SubmitMagnet(&debridTypes.Torrent{Magnet: &utils.Magnet{Link: "magnet:?xt=urn:btih:abc"}})
+			if err != nil || got.Id != "99" {
+				t.Fatalf("SubmitMagnet() = %v, %v; want id 99", got, err)
+			}
+			if lists.Load() != tc.wantLists {
+				t.Errorf("magnet list calls = %d, want %d", lists.Load(), tc.wantLists)
+			}
+			if got := deleted(); fmt.Sprint(got) != fmt.Sprint(tc.wantDeleted) {
+				t.Errorf("deleted = %v, want %v", got, tc.wantDeleted)
+			}
+		})
 	}
 }

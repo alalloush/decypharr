@@ -378,6 +378,55 @@ func (m *Manager) processAction(entry *storage.Entry) {
 		_ = m.queue.Update(entry)
 		return
 	}
+	m.applySlotStrategy(entry)
+}
+
+// applySlotStrategy frees the slot of every placement whose provider uses
+// remove_after_add and persists the entry when one was freed. Without that
+// strategy it does nothing.
+func (m *Manager) applySlotStrategy(entry *storage.Entry) {
+	freed := false
+	for providerName := range entry.Providers {
+		if m.applySlotStrategyFor(entry, providerName) {
+			freed = true
+		}
+	}
+	if !freed {
+		return
+	}
+	if err := m.AddOrUpdate(entry, nil); err != nil {
+		m.logger.Error().Err(err).Str("name", entry.Name).Msg("Failed to persist freed slots (remove_after_add)")
+	}
+}
+
+// applySlotStrategyFor frees a single provider placement's AllDebrid slot
+// when that provider's SlotStrategy is remove_after_add and the placement
+// hasn't already been freed. It only mutates entry in memory — callers
+// persist it (applySlotStrategy does so for all providers at once; the
+// Fixer's MoveTorrent relies on its own deferred save after re-inserting a
+// single placement, which is why this is split out from applySlotStrategy
+// rather than inlined there). It reports whether it freed the slot.
+func (m *Manager) applySlotStrategyFor(entry *storage.Entry, providerName string) bool {
+	pe, ok := entry.Providers[providerName]
+	if !ok || pe == nil || pe.RemovedAt != nil {
+		return false
+	}
+	client := m.ProviderClient(providerName)
+	if client == nil {
+		return false
+	}
+	cfg := client.Config()
+	if cfg.Provider != "alldebrid" || cfg.SlotStrategy != "remove_after_add" {
+		return false
+	}
+	if err := client.DeleteTorrent(pe.ID); err != nil {
+		m.logger.Warn().Err(err).Str("provider", providerName).Str("name", entry.Name).Msg("Failed to free slot (remove_after_add)")
+		return false
+	}
+	now := time.Now()
+	pe.RemovedAt = &now
+	m.logger.Info().Str("provider", providerName).Str("name", entry.Name).Msg("Slot freed (remove_after_add)")
+	return true
 }
 
 // processTorrent handles the complete torrent lifecycle
