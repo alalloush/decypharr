@@ -37,6 +37,6 @@ Fork changes that affect deployment: WebDAV needs auth when `use_auth` is on, TL
 
 ## Related
 
-`~/Code/dler` (Rust) handles Real-Debrid hoster links; decypharr keeps torrents, magnets, DMM, TorBox usenet and the mount. dler's `crates/realdebrid` could later be shared with a Rust port. See `~/Code/dler/docs/PROJECT_STATE.md`.
+`~/Code/dler` (Rust, git.por.re:al/dler; handover `docs/PROJECT_STATE.md`) handles Real-Debrid hoster links; decypharr keeps torrents, magnets, DMM, TorBox usenet and the mount. dler's `crates/realdebrid` could later be shared with a Rust port. See `~/Code/dler/docs/PROJECT_STATE.md`.
 
 Next: [NEXT_STEPS.md](NEXT_STEPS.md).
