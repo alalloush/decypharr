@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/sirrobot01/decypharr/internal/config"
+	"github.com/sirrobot01/decypharr/pkg/debrid/throttle"
 	"github.com/sirrobot01/decypharr/pkg/debrid/types"
 )
 
@@ -30,7 +31,7 @@ func TestTorrentResponses(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { fmt.Fprint(w, test.body) }))
 			defer server.Close()
-			provider, err := New(config.Debrid{Name: "debridlink", APIKey: "token"}, nil)
+			provider, err := New(config.Debrid{Name: "debridlink", APIKey: "token"}, throttle.Lanes{})
 			if err != nil {
 				t.Fatal(err)
 			}

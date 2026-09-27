@@ -19,8 +19,8 @@ import (
 	"github.com/sirrobot01/decypharr/internal/request"
 	"github.com/sirrobot01/decypharr/internal/utils"
 	"github.com/sirrobot01/decypharr/pkg/debrid/account"
+	"github.com/sirrobot01/decypharr/pkg/debrid/throttle"
 	"github.com/sirrobot01/decypharr/pkg/debrid/types"
-	"go.uber.org/ratelimit"
 )
 
 const (
@@ -43,7 +43,7 @@ type DebridLink struct {
 	profile types.ProfileCache
 }
 
-func New(dc config.Debrid, ratelimits map[string]ratelimit.Limiter) (*DebridLink, error) {
+func New(dc config.Debrid, lanes throttle.Lanes) (*DebridLink, error) {
 	cfg := config.Get()
 	headers := map[string]string{
 		"Authorization": fmt.Sprintf("Bearer %s", dc.APIKey),
@@ -56,7 +56,7 @@ func New(dc config.Debrid, ratelimits map[string]ratelimit.Limiter) (*DebridLink
 
 	opts := []request.ClientOption{
 		request.WithHeaders(headers),
-		request.WithRateLimiter(ratelimits["main"]),
+		request.WithRateLimiter(lanes.API),
 		request.WithMaxRetries(cfg.Retries),
 		request.WithRetryableStatus(http.StatusTooManyRequests, http.StatusBadGateway),
 		request.WithInsecureSkipVerify(dc.InsecureSkipVerify),
@@ -66,7 +66,7 @@ func New(dc config.Debrid, ratelimits map[string]ratelimit.Limiter) (*DebridLink
 	}
 	repairOpts := []request.ClientOption{
 		request.WithHeaders(headers),
-		request.WithRateLimiter(ratelimits["repair"]),
+		request.WithRateLimiter(lanes.Repair),
 		request.WithMaxRetries(4),
 		request.WithRetryableStatus(http.StatusTooManyRequests),
 		request.WithInsecureSkipVerify(dc.InsecureSkipVerify),
@@ -82,7 +82,7 @@ func New(dc config.Debrid, ratelimits map[string]ratelimit.Limiter) (*DebridLink
 	dbl := &DebridLink{
 		Host:                  dc.APIBaseURL(defaultHost),
 		APIKey:                dc.APIKey,
-		accountsManager:       account.NewManager(dc, ratelimits["download"], log),
+		accountsManager:       account.NewManager(dc, lanes.Download, log),
 		DownloadUncached:      dc.DownloadUncached,
 		autoExpiresLinksAfter: autoExpiresLinksAfter,
 		client:                request.New(opts...),

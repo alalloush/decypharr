@@ -4,31 +4,38 @@ import (
 	"cmp"
 	"errors"
 	"fmt"
-	"runtime"
 	"slices"
 	"strconv"
 	"strings"
 )
 
 type Debrid struct {
-	Provider                     string   `json:"provider,omitempty"` // realdebrid, alldebrid, debridlink, torbox, premiumize
-	Name                         string   `json:"name,omitempty"`
-	APIKey                       string   `json:"api_key,omitempty"`
-	DownloadAPIKeys              []string `json:"download_api_keys,omitempty"`
-	DownloadUncached             bool     `json:"download_uncached,omitempty"`
-	RateLimit                    string   `json:"rate_limit,omitempty"` // 200/minute or 10/second
-	RepairRateLimit              string   `json:"repair_rate_limit,omitempty"`
-	DownloadRateLimit            string   `json:"download_rate_limit,omitempty"`
-	Proxy                        string   `json:"proxy,omitempty"`
-	UnpackRar                    bool     `json:"unpack_rar,omitempty"`
-	MinimumFreeSlot              int      `json:"minimum_free_slot,omitempty"` // Minimum active pots to use this debrid
-	Priority                     int      `json:"priority,omitempty"`          // Submission order, lower first; 0 means config position (index+1)
-	Limit                        int      `json:"limit,omitempty"`             // Maximum number of total torrents
-	TorrentsRefreshInterval      string   `json:"torrents_refresh_interval,omitempty"`
-	DownloadLinksRefreshInterval string   `json:"download_links_refresh_interval,omitempty"`
-	Workers                      int      `json:"workers,omitempty"`
-	AutoExpireLinksAfter         string   `json:"auto_expire_links_after,omitempty"`
-	UserAgent                    string   `json:"user_agent,omitempty"`
+	Provider         string   `json:"provider,omitempty"` // realdebrid, alldebrid, debridlink, torbox, premiumize
+	Name             string   `json:"name,omitempty"`
+	APIKey           string   `json:"api_key,omitempty"`
+	DownloadAPIKeys  []string `json:"download_api_keys,omitempty"`
+	DownloadUncached bool     `json:"download_uncached,omitempty"`
+	// RateLimit caps all of this entry's API calls together (main API,
+	// repair and every download key), e.g. 200/minute or 10/second: at most
+	// that many start in any minute or second. Real-Debrid stays at or under
+	// 240/minute and TorBox at or under 288/minute per API key whatever it
+	// says. Empty means those limits, or 250/minute for other providers.
+	RateLimit string `json:"rate_limit,omitempty"`
+	// RepairRateLimit also caps repair probes, which still count against
+	// RateLimit.
+	RepairRateLimit string `json:"repair_rate_limit,omitempty"`
+	// DownloadRateLimit also caps download-link calls on all download keys
+	// together, and TorBox submissions. They still count against RateLimit.
+	DownloadRateLimit            string `json:"download_rate_limit,omitempty"`
+	Proxy                        string `json:"proxy,omitempty"`
+	UnpackRar                    bool   `json:"unpack_rar,omitempty"`
+	MinimumFreeSlot              int    `json:"minimum_free_slot,omitempty"` // Minimum active pots to use this debrid
+	Priority                     int    `json:"priority,omitempty"`          // Submission order, lower first; 0 means config position (index+1)
+	Limit                        int    `json:"limit,omitempty"`             // Maximum number of total torrents
+	TorrentsRefreshInterval      string `json:"torrents_refresh_interval,omitempty"`
+	DownloadLinksRefreshInterval string `json:"download_links_refresh_interval,omitempty"`
+	AutoExpireLinksAfter         string `json:"auto_expire_links_after,omitempty"`
+	UserAgent                    string `json:"user_agent,omitempty"`
 	// SlotStrategy frees AllDebrid magnet slots: "remove_after_add" deletes a
 	// magnet once its download completes, "remove_oldest" deletes the oldest
 	// magnet on the account before a submit at the limit. Empty keeps them.
@@ -87,9 +94,6 @@ func DebridsByPriority(debrids []Debrid) []Debrid {
 }
 
 func (c *Config) updateDebrid(index int, d Debrid) Debrid {
-	workers := runtime.NumCPU() * 50
-	perDebrid := workers / len(c.Debrids)
-
 	if d.Provider == "" {
 		d.Provider = d.Name
 	}
@@ -109,9 +113,6 @@ func (c *Config) updateDebrid(index int, d Debrid) Debrid {
 	}
 	if d.DownloadLinksRefreshInterval == "" {
 		d.DownloadLinksRefreshInterval = DefaultDownloadsRefreshInterval
-	}
-	if d.Workers == 0 {
-		d.Workers = perDebrid
 	}
 	if d.AutoExpireLinksAfter == "" {
 		d.AutoExpireLinksAfter = DefaultAutoExpireLinksAfter

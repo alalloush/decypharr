@@ -78,7 +78,7 @@ Decypharr tries providers in `priority` order (lower first; unset means the prov
 
 ### How do I handle Debrid rate limits?
 
-Configure per-provider rate limits:
+Decypharr keeps Real-Debrid at or under 240 requests per minute and TorBox at or under 288 per minute per API key on its own. All of a provider's calls (API, repair and every download key) share one budget. Set `rate_limit` to go lower, for example to leave room for other tools on the same account:
 
 ```json
 {
@@ -92,13 +92,7 @@ Configure per-provider rate limits:
 }
 ```
 
-Or add multiple API keys for rotation:
-
-```json
-{
-  "download_api_keys": ["KEY1", "KEY2", "KEY3"]
-}
-```
+Extra Real-Debrid `download_api_keys` spread traffic over accounts but do not raise the request budget. See [Rate limits](../../guides/configuration/#rate-limits).
 
 ### What happens when Debrid slots are full?
 
@@ -349,10 +343,9 @@ rm /path/to/config.json  # Binary
 
 ### High CPU/Memory usage
 
-1. Reduce concurrent workers:
+1. Reduce repair workers:
    ```json
    {
-     "debrids": [{"workers": 25}],
      "repair": {"workers": 1}
    }
    ```

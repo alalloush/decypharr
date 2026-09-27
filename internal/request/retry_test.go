@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/sirrobot01/decypharr/internal/config"
 )
@@ -50,5 +51,44 @@ func TestRetryPolicyPreservesUnlistedProviderStatus(t *testing.T) {
 				t.Fatalf("response = %d %q, error = %v", resp.StatusCode, body, err)
 			}
 		})
+	}
+}
+
+type countingLimiter struct{ takes atomic.Int32 }
+
+func (l *countingLimiter) Take() time.Time {
+	l.takes.Add(1)
+	return time.Now()
+}
+
+// A provider counts every attempt against its rate limit, 429s included, so
+// each retry must wait for a permit of its own.
+func TestRetriesTakeARatePermitEach(t *testing.T) {
+	config.SetConfigPath(t.TempDir())
+	t.Cleanup(config.Reset)
+	var calls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if calls.Add(1) < 3 {
+			w.WriteHeader(http.StatusTooManyRequests)
+			return
+		}
+		_, _ = io.WriteString(w, "ok")
+	}))
+	defer server.Close()
+
+	limiter := &countingLimiter{}
+	client := New(WithMaxRetries(3), WithRateLimiter(limiter))
+	client.client.RetryWaitMin, client.client.RetryWaitMax = time.Millisecond, time.Millisecond
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, server.URL, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	DrainAndClose(resp.Body)
+	if calls.Load() != 3 || limiter.takes.Load() != 3 {
+		t.Fatalf("%d attempts took %d permits, want 3 and 3", calls.Load(), limiter.takes.Load())
 	}
 }

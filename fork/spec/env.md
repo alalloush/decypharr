@@ -10,7 +10,7 @@ Behaviour as of upstream `beta` 249ac9e plus this fork:
 - Numbers that fail to parse are ignored silently, and the file value stays.
 - Overrides are applied when the config loads, after defaults and on top of `config.json`. They are not applied on the very first start, when `config.json` does not exist yet and is created; they take effect from the next start.
 - Overrides are in-memory, but any later save (settings saved from the web UI, or a load that has to write new signing secrets) writes the overridden values, secrets included, into `config.json`.
-- Defaults run before the overrides. A debrid entry that exists only in the environment therefore misses the per-debrid defaults on that start (`provider` falling back to `name`, `download_api_keys` falling back to `api_key`, `workers`, refresh intervals) until something saves the config.
+- Defaults run before the overrides. A debrid entry that exists only in the environment therefore misses the per-debrid defaults on that start (`provider` falling back to `name`, `download_api_keys` falling back to `api_key`, refresh intervals) until something saves the config.
 
 ## Server and auth
 

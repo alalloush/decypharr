@@ -273,6 +273,17 @@ func New(options ...ClientOption) *Client {
 	retryClient.Logger = nil
 	retryClient.Backoff = retryAfterBackoff
 	retryClient.ErrorHandler = giveUp
+	// The provider counts every attempt, so a retry waits for its own permit
+	// like the first attempt does in Do.
+	if limiter := client.rateLimiter; limiter != nil {
+		retryClient.PrepareRetry = func(req *http.Request) error {
+			if err := req.Context().Err(); err != nil {
+				return err
+			}
+			limiter.Take()
+			return nil
+		}
+	}
 
 	// Custom retry policy based on retryable status codes
 	retryClient.CheckRetry = func(ctx context.Context, resp *http.Response, err error) (bool, error) {

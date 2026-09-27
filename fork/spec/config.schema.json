@@ -130,13 +130,15 @@
         },
         "rate_limit": {
           "type": "string",
-          "description": "200/minute or 10/second"
+          "description": "RateLimit caps all of this entry's API calls together (main API,\nrepair and every download key), e.g. 200/minute or 10/second: at most\nthat many start in any minute or second. Real-Debrid stays at or under\n240/minute and TorBox at or under 288/minute per API key whatever it\nsays. Empty means those limits, or 250/minute for other providers."
         },
         "repair_rate_limit": {
-          "type": "string"
+          "type": "string",
+          "description": "RepairRateLimit also caps repair probes, which still count against\nRateLimit."
         },
         "download_rate_limit": {
-          "type": "string"
+          "type": "string",
+          "description": "DownloadRateLimit also caps download-link calls on all download keys\ntogether, and TorBox submissions. They still count against RateLimit."
         },
         "proxy": {
           "type": "string"
@@ -161,9 +163,6 @@
         },
         "download_links_refresh_interval": {
           "type": "string"
-        },
-        "workers": {
-          "type": "integer"
         },
         "auto_expire_links_after": {
           "type": "string"

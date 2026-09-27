@@ -25,6 +25,7 @@ import (
 	"github.com/sirrobot01/decypharr/internal/request"
 	"github.com/sirrobot01/decypharr/internal/utils"
 	"github.com/sirrobot01/decypharr/pkg/debrid/account"
+	"github.com/sirrobot01/decypharr/pkg/debrid/throttle"
 	"github.com/sirrobot01/decypharr/pkg/debrid/types"
 	"github.com/sirrobot01/decypharr/pkg/version"
 	"go.uber.org/ratelimit"
@@ -35,6 +36,11 @@ const (
 	// The plan decides the slot count, so a plan change shows within an hour.
 	profileCacheDuration = time.Hour
 )
+
+// uncachedAdds is TorBox's limit on createtorrent for torrents it has not
+// cached, per API key, on top of the 300 requests per minute
+// (https://support.torbox.app/en/articles/13726368-api-rate-limits).
+var uncachedAdds = throttle.Limit{Count: 60, Per: time.Hour}
 
 var planSlots = map[string]int{
 	"essential": 3,
@@ -51,6 +57,7 @@ type Torbox struct {
 	submitClient          *request.Client
 	logger                zerolog.Logger
 	profile               types.ProfileCache
+	uncachedAdds          *throttle.Window
 	config                config.Debrid
 	downloadPresentCache  sync.Map
 	downloadPresentMu     sync.Mutex
@@ -60,7 +67,7 @@ type Torbox struct {
 	usenetPresent sync.Map // bare usenet id -> download_present
 }
 
-func New(dc config.Debrid, ratelimits map[string]ratelimit.Limiter) (*Torbox, error) {
+func New(dc config.Debrid, lanes throttle.Lanes) (*Torbox, error) {
 	cfg := config.Get()
 	headers := map[string]string{
 		"Authorization": fmt.Sprintf("Bearer %s", dc.APIKey),
@@ -71,18 +78,6 @@ func New(dc config.Debrid, ratelimits map[string]ratelimit.Limiter) (*Torbox, er
 		headers["User-Agent"] = fmt.Sprintf("Decypharr/%s (%s; %s)", version.GetInfo(), runtime.GOOS, runtime.GOARCH)
 	}
 	_log := logger.New(dc.Name)
-
-	// TorBox enforces a hard cap of 300 req/min per API key, applied
-	// synchronously across all servers since v8.4 (Feb 2026, GAP-002).
-	// Default to that limit if the user has not configured one explicitly.
-	mainRL := ratelimits["main"]
-	if mainRL == nil {
-		mainRL = ratelimit.New(300, ratelimit.Per(time.Minute), ratelimit.WithSlack(30))
-	}
-	submitRL := ratelimits["download"]
-	if submitRL == nil {
-		submitRL = ratelimit.New(300, ratelimit.Per(time.Minute), ratelimit.WithSlack(30))
-	}
 
 	newClient := func(rateLimiter ratelimit.Limiter) *request.Client {
 		opts := []request.ClientOption{
@@ -107,12 +102,13 @@ func New(dc config.Debrid, ratelimits map[string]ratelimit.Limiter) (*Torbox, er
 	tb := &Torbox{
 		Host:                  dc.APIBaseURL(defaultHost),
 		APIKey:                dc.APIKey,
-		accountsManager:       account.NewManager(dc, submitRL, _log),
+		accountsManager:       account.NewManager(dc, lanes.Download, _log),
 		config:                dc,
 		autoExpiresLinksAfter: autoExpiresLinksAfter,
-		client:                newClient(mainRL),
-		submitClient:          newClient(submitRL),
+		client:                newClient(lanes.API),
+		submitClient:          newClient(lanes.Submit),
 		logger:                _log,
+		uncachedAdds:          throttle.SharedWindow(dc, "uncached-adds", uncachedAdds),
 	}
 	return tb, nil
 }
@@ -253,24 +249,32 @@ func (tb *Torbox) SubmitMagnet(torrent *types.Torrent) (*types.Torrent, error) {
 	formData := map[string]string{
 		"magnet": torrent.Magnet.Link,
 	}
+	// Ask the cache before calling createtorrent. When a release is not
+	// cached and add_only_if_cached is set, TorBox does not reply with a
+	// refusal, it does not reply at all: the request wrapper then burns
+	// ResponseHeaderTimeout (30s) per attempt and retries cfg.Retries times,
+	// so one uncached grab can cost around two minutes. The calling *arr
+	// times out well before that and records the failure against the
+	// INDEXER, which it eventually disables, for a release the indexer
+	// served perfectly well. Failing fast keeps the refusal cheap and keeps
+	// the blame off the indexer. When uncached downloads are allowed, the
+	// answer says whether the add counts against TorBox's hourly limit on
+	// uncached adds. Only a definite miss counts: a failed probe or an
+	// unchecked (empty) hash falls through to the previous behaviour. The
+	// probe uses the submission lane so it does not queue behind list
+	// refreshes.
+	probe, err := tb.checkCached(tb.submissionClient(), []string{torrent.InfoHash})
+	cached, checked := probe[torrent.InfoHash]
+	uncached := err == nil && checked && !cached
 	if !torrent.DownloadUncached {
 		formData["add_only_if_cached"] = "true"
-
-		// Ask the cache before calling createtorrent. When a release is not
-		// cached TorBox does not reply with a refusal, it does not reply at
-		// all: the request wrapper then burns ResponseHeaderTimeout (30s) per
-		// attempt and retries cfg.Retries times, so one uncached grab can cost
-		// around two minutes. The calling *arr times out well before that and
-		// records the failure against the INDEXER, which it eventually
-		// disables, for a release the indexer served perfectly well.
-		// Failing fast keeps the refusal cheap and keeps the blame off the
-		// indexer. Only a definite miss refuses: a failed probe or an unchecked
-		// (empty) hash falls through to the previous behaviour. The probe uses
-		// the submission lane so it does not queue behind list refreshes.
-		probe, err := tb.checkCached(tb.submissionClient(), []string{torrent.InfoHash})
-		if cached, checked := probe[torrent.InfoHash]; err == nil && checked && !cached {
+		if uncached {
 			return nil, fmt.Errorf("torrent %s: %w", torrent.Name, customerror.TorrentNotCachedError)
 		}
+	} else if uncached && !tb.uncachedAdds.Allow(time.Now()) {
+		// Refuse rather than wait, so the add can move on to the next
+		// debrid, or fail while the *arr is still listening.
+		return nil, fmt.Errorf("torrent %s is not cached, and TorBox allows only %d uncached adds per API key every hour; try again later", torrent.Name, uncachedAdds.Count)
 	}
 
 	resp, err := tb.doPostFormWithClient(tb.submissionClient(), "/api/torrents/createtorrent", formData, &data)

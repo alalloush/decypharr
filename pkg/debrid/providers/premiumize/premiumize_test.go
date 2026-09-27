@@ -10,8 +10,8 @@ import (
 	"github.com/sirrobot01/decypharr/internal/config"
 	"github.com/sirrobot01/decypharr/internal/request"
 	"github.com/sirrobot01/decypharr/pkg/debrid/account"
+	"github.com/sirrobot01/decypharr/pkg/debrid/throttle"
 	"github.com/sirrobot01/decypharr/pkg/debrid/types"
-	"go.uber.org/ratelimit"
 )
 
 func TestGetTorrentsAssignsStableUniqueHashesWithoutMagnetSources(t *testing.T) {
@@ -203,7 +203,7 @@ func TestDeleteLinkThenGetDownloadLinkReMints(t *testing.T) {
 	server := httptest.NewServer(mux)
 	t.Cleanup(server.Close)
 
-	pm, err := New(config.Debrid{Name: "premiumize", APIKey: "key", DownloadAPIKeys: []string{"tok"}, APIHost: server.URL}, map[string]ratelimit.Limiter{})
+	pm, err := New(config.Debrid{Name: "premiumize", APIKey: "key", DownloadAPIKeys: []string{"tok"}, APIHost: server.URL}, throttle.Lanes{})
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}

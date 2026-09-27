@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/sirrobot01/decypharr/internal/config"
+	"github.com/sirrobot01/decypharr/pkg/debrid/throttle"
 )
 
 // New fetches the profile in the background while the stats page and slot
@@ -34,7 +35,7 @@ func TestGetProfileConcurrentCallersShareOneRequest(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 
-	rd, err := New(config.Debrid{Name: "rd", Provider: "realdebrid", APIKey: "key", APIHost: server.URL}, nil)
+	rd, err := New(config.Debrid{Name: "rd", Provider: "realdebrid", APIKey: "key", APIHost: server.URL}, throttle.Lanes{})
 	if err != nil {
 		t.Fatal(err)
 	}

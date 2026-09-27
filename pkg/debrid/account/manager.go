@@ -34,7 +34,9 @@ type Manager struct {
 
 const noActiveWarningInterval = time.Minute
 
-func NewManager(debridConf config.Debrid, downloadRL ratelimit.Limiter, logger zerolog.Logger) *Manager {
+// NewManager builds an account for every download key. limiterFor returns
+// the rate limiter of a key's account; nil means no limiter.
+func NewManager(debridConf config.Debrid, limiterFor func(token string) ratelimit.Limiter, logger zerolog.Logger) *Manager {
 	m := &Manager{
 		debrid:   debridConf.Name,
 		accounts: xsync.NewMap[string, *Account](),
@@ -51,9 +53,12 @@ func NewManager(debridConf config.Debrid, downloadRL ratelimit.Limiter, logger z
 			"Authorization": fmt.Sprintf("Bearer %s", token),
 		}
 
-		// Create request client with equivalent options
+		var limiter ratelimit.Limiter
+		if limiterFor != nil {
+			limiter = limiterFor(token)
+		}
 		opts := []request.ClientOption{
-			request.WithRateLimiter(downloadRL),
+			request.WithRateLimiter(limiter),
 			request.WithHeaders(headers),
 			request.WithMaxRetries(cfg.Retries),
 			request.WithRetryableStatus(http.StatusTooManyRequests, http.StatusBadGateway, 447),

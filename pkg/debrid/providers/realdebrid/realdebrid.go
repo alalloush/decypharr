@@ -18,8 +18,8 @@ import (
 	"github.com/sirrobot01/decypharr/internal/utils"
 	"github.com/sirrobot01/decypharr/pkg/debrid/account"
 	"github.com/sirrobot01/decypharr/pkg/debrid/common/rar"
+	"github.com/sirrobot01/decypharr/pkg/debrid/throttle"
 	"github.com/sirrobot01/decypharr/pkg/debrid/types"
-	"go.uber.org/ratelimit"
 
 	"github.com/rs/zerolog"
 	"github.com/sirrobot01/decypharr/internal/config"
@@ -47,7 +47,7 @@ type RealDebrid struct {
 	retries      int
 }
 
-func New(dc config.Debrid, ratelimits map[string]ratelimit.Limiter) (*RealDebrid, error) {
+func New(dc config.Debrid, lanes throttle.Lanes) (*RealDebrid, error) {
 	headers := map[string]string{
 		"Authorization": fmt.Sprintf("Bearer %s", dc.APIKey),
 	}
@@ -66,7 +66,7 @@ func New(dc config.Debrid, ratelimits map[string]ratelimit.Limiter) (*RealDebrid
 	opts := []request.ClientOption{
 		request.WithHeaders(headers),
 		request.WithMaxRetries(cfg.Retries),
-		request.WithRateLimiter(ratelimits["main"]),
+		request.WithRateLimiter(lanes.API),
 		request.WithRetryableStatus(http.StatusTooManyRequests),
 		request.WithProxy(dc.Proxy),
 		request.WithInsecureSkipVerify(dc.InsecureSkipVerify),
@@ -77,7 +77,7 @@ func New(dc config.Debrid, ratelimits map[string]ratelimit.Limiter) (*RealDebrid
 		request.WithLogger(_log),
 		request.WithMaxRetries(4),
 		request.WithRetryableStatus(429),
-		request.WithRateLimiter(ratelimits["repair"]),
+		request.WithRateLimiter(lanes.Repair),
 		request.WithProxy(dc.Proxy),
 		request.WithInsecureSkipVerify(dc.InsecureSkipVerify),
 	}
@@ -85,7 +85,7 @@ func New(dc config.Debrid, ratelimits map[string]ratelimit.Limiter) (*RealDebrid
 	r := &RealDebrid{
 		Host:                  dc.APIBaseURL(defaultHost),
 		APIKey:                dc.APIKey,
-		accountsManager:       account.NewManager(dc, ratelimits["download"], _log),
+		accountsManager:       account.NewManager(dc, lanes.Download, _log),
 		autoExpiresLinksAfter: autoExpiresLinksAfter,
 		client:                request.New(opts...),
 		repairClient:          request.New(repairOpts...),

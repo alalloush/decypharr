@@ -8,47 +8,8 @@ import (
 	"net/http"
 	"net/url"
 	"path/filepath"
-	"strconv"
 	"strings"
-	"time"
-
-	"go.uber.org/ratelimit"
 )
-
-func ParseRateLimit(rateStr string) ratelimit.Limiter {
-	if rateStr == "" {
-		return nil
-	}
-	parts := strings.SplitN(rateStr, "/", 2)
-	if len(parts) != 2 {
-		return nil
-	}
-
-	// parse count
-	count, err := strconv.Atoi(strings.TrimSpace(parts[0]))
-	if err != nil || count <= 0 {
-		return nil
-	}
-
-	// Set slack size to 10%
-	slackSize := count / 10
-
-	// normalize unit
-	unit := strings.ToLower(strings.TrimSpace(parts[1]))
-	unit = strings.TrimSuffix(unit, "s")
-	switch unit {
-	case "minute", "min":
-		return ratelimit.New(count, ratelimit.Per(time.Minute), ratelimit.WithSlack(slackSize))
-	case "second", "sec":
-		return ratelimit.New(count, ratelimit.Per(time.Second), ratelimit.WithSlack(slackSize))
-	case "hour", "hr":
-		return ratelimit.New(count, ratelimit.Per(time.Hour), ratelimit.WithSlack(slackSize))
-	case "day", "d":
-		return ratelimit.New(count, ratelimit.Per(24*time.Hour), ratelimit.WithSlack(slackSize))
-	default:
-		return nil
-	}
-}
 
 func JSONResponse(w http.ResponseWriter, data any, code int) {
 	w.Header().Set("Content-Type", "application/json")
