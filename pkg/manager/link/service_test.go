@@ -132,7 +132,7 @@ func newGatedService(t *testing.T) (*Service, *gatedClient, *storage.Entry) {
 	t.Cleanup(client.open) // never leave a fetch parked past the test
 	clients := xsync.NewMap[string, debrid.Client]()
 	clients.Store("torbox", client)
-	s := New(clients, nil, nil, nil, cdn.Client(), 0, zerolog.Nop())
+	s := New(clients, nil, nil, nil, func(string) *http.Client { return cdn.Client() }, 0, zerolog.Nop())
 
 	const filename = "Release.mkv"
 	entry := &storage.Entry{
