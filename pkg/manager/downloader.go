@@ -42,6 +42,11 @@ const (
 	symlinkLogSampleSize        = 8
 	localDownloadMaxAttempts    = 4
 	defaultFileDownloadWorkers  = 5
+	// A provider can report a torrent finished before it lists the files;
+	// the backoff gives it about 46s (2+4+8+16+16) to catch up.
+	noFilesRetryAttempts     = 5
+	noFilesRetryInitialDelay = 2 * time.Second
+	noFilesRetryMaxDelay     = 16 * time.Second
 )
 
 type downloadLogMeta struct {
@@ -75,6 +80,10 @@ func (d *Downloader) download(torrent *storage.Entry) error {
 	torrent.IsDownloading = true
 	_ = d.manager.queue.Update(torrent)
 
+	if err := d.ensureFiles(torrent); err != nil {
+		return err
+	}
+
 	var (
 		isMultiSeason bool
 		seasons       []SeasonInfo
@@ -106,6 +115,55 @@ func (d *Downloader) download(torrent *storage.Entry) error {
 		return nil
 	}
 	return d.process(torrent, torrentMountPath)
+}
+
+// ensureFiles re-fetches a torrent from its provider, with backoff, while the
+// entry lists no files. Some providers report a transfer finished before its
+// file list exists (Premiumize for instantly cached releases, AllDebrid
+// "ready" without files). Acting on the empty list completed the entry with
+// an empty folder and the *arr found nothing to import; now the entry fails
+// instead when the files never show up. The "none" action needs no files.
+func (d *Downloader) ensureFiles(entry *storage.Entry) error {
+	if !entry.IsTorrent() || entry.Action == config.DownloadActionNone || len(entry.GetActiveFiles()) > 0 {
+		return nil
+	}
+	placement := entry.GetActiveProvider()
+	client := d.manager.ProviderClient(entry.ActiveProvider)
+	if placement == nil || client == nil {
+		return fmt.Errorf("provider reported no files for %s", entry.Name)
+	}
+	ctx := d.operationContext()
+	delay := noFilesRetryInitialDelay
+	for attempt := 1; attempt <= noFilesRetryAttempts; attempt++ {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(delay):
+		}
+		delay = min(delay*2, noFilesRetryMaxDelay)
+		refreshed, err := client.GetTorrent(placement.ID)
+		if err != nil || refreshed == nil || len(refreshed.Files) == 0 {
+			continue
+		}
+		applyDebridTorrentToEntry(entry, refreshed)
+		if len(entry.GetActiveFiles()) == 0 {
+			continue
+		}
+		d.logger.Info().Int("attempt", attempt).Str("name", entry.Name).
+			Msg("Provider listed the files after reporting the torrent finished")
+		// The mount lists what storage holds, so publish the files before
+		// the action waits for them there.
+		if err := d.manager.AddOrUpdate(entry, nil); err != nil {
+			return fmt.Errorf("save files listed by the provider: %w", err)
+		}
+		d.manager.InvalidateEntryCache()
+		if err := d.manager.RefreshMount(); err != nil {
+			d.logger.Error().Err(err).Msg("Mount refresh failed")
+		}
+		_ = d.manager.queue.Update(entry)
+		return nil
+	}
+	return fmt.Errorf("provider still lists no files for %s after %d attempts", entry.Name, noFilesRetryAttempts)
 }
 
 func (d *Downloader) process(entry *storage.Entry, mountPath string) error {
