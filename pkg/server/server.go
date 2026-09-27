@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"crypto/rand"
 	"embed"
 	"errors"
 	"fmt"
@@ -11,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -57,6 +59,19 @@ type ContentResponse struct {
 	ArrID string `json:"arr"`
 }
 
+// shutdownGrace is how long a stop waits for in-flight requests before it
+// closes their connections. A streaming read (WebDAV, STRM) stays in flight
+// for as long as the player keeps reading, and a restart cannot bind the next
+// listener until the old server has stopped.
+const shutdownGrace = 5 * time.Second
+
+// handlerGrace is how long a stop then waits for the handlers on the closed
+// connections to return, so the caller does not reset the manager under them.
+// Handlers that touch their connection fail on the next read or write; the cap
+// is for one that ignores it (utils.DownloadFile takes no context) and must
+// not hold a restart open indefinitely.
+const handlerGrace = 30 * time.Second
+
 type Server struct {
 	router       *chi.Mux
 	logger       zerolog.Logger
@@ -67,6 +82,14 @@ type Server struct {
 	nzbUserAgent string
 	urlBase      string
 	restartFunc  func()
+
+	// instanceID names this run of the service. A restart builds a new Server,
+	// so a client that sees it change on /version knows the new listener is up.
+	instanceID string
+
+	// inflight counts handlers that have started and not returned.
+	// http.Server.Close does not wait for them; stop does.
+	inflight atomic.Int64
 }
 
 func New(mgr *manager.Manager) *Server {
@@ -105,12 +128,13 @@ func New(mgr *manager.Manager) *Server {
 	statsCollector := stats.New(mgr)
 
 	s := &Server{
-		logger:    l,
-		manager:   mgr,
-		stats:     statsCollector,
-		cookie:    cookieStore,
-		templates: templates,
-		urlBase:   cfg.URLBase,
+		logger:     l,
+		manager:    mgr,
+		stats:      statsCollector,
+		cookie:     cookieStore,
+		templates:  templates,
+		urlBase:    cfg.URLBase,
+		instanceID: rand.Text(),
 	}
 
 	qb := qbit.New(mgr)
@@ -186,7 +210,7 @@ func (s *Server) Start(ctx context.Context) error {
 	s.logger.Info().Msgf("Starting server on %s%s", addr, cfg.URLBase)
 	srv := &http.Server{
 		Addr:    addr,
-		Handler: s.router,
+		Handler: s.trackInflight(s.router),
 	}
 
 	go func() {
@@ -197,7 +221,40 @@ func (s *Server) Start(ctx context.Context) error {
 
 	<-ctx.Done()
 	s.logger.Info().Msg("Shutting down gracefully...")
-	return srv.Shutdown(context.Background())
+	return s.stop(srv, shutdownGrace, handlerGrace)
+}
+
+func (s *Server) trackInflight(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		s.inflight.Add(1)
+		defer s.inflight.Add(-1)
+		next.ServeHTTP(w, r)
+	})
+}
+
+// stop shuts srv down without letting a long request hold it open: requests
+// get grace to finish, then their connections are closed, and stop waits up to
+// handlerGrace for their handlers to return.
+func (s *Server) stop(srv *http.Server, grace, handlerGrace time.Duration) error {
+	ctx, cancel := context.WithTimeout(context.Background(), grace)
+	defer cancel()
+	err := srv.Shutdown(ctx)
+	if !errors.Is(err, context.DeadlineExceeded) {
+		return err
+	}
+	s.logger.Warn().Int64("requests", s.inflight.Load()).Dur("grace", grace).
+		Msg("Requests still in flight after the shutdown grace period; closing them")
+	err = srv.Close()
+	deadline := time.Now().Add(handlerGrace)
+	for s.inflight.Load() > 0 {
+		if time.Now().After(deadline) {
+			s.logger.Warn().Int64("handlers", s.inflight.Load()).Dur("grace", handlerGrace).
+				Msg("Handlers still running after their connections were closed; continuing")
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	return err
 }
 
 func (s *Server) getLogs(w http.ResponseWriter, r *http.Request) {

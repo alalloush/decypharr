@@ -34,8 +34,12 @@ func (s *Server) handleGetArrs(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleGetVersion(w http.ResponseWriter, r *http.Request) {
-	v := version.GetInfo()
-	utils.JSONResponse(w, v, http.StatusOK)
+	// instance changes on every restart; the settings page waits for a new one
+	// before it reloads.
+	utils.JSONResponse(w, struct {
+		version.Info
+		Instance string `json:"instance"`
+	}{version.GetInfo(), s.instanceID}, http.StatusOK)
 }
 
 func (s *Server) handleRunMountCacheCleanup(w http.ResponseWriter, r *http.Request) {
@@ -376,7 +380,9 @@ func (s *Server) handleUpdateConfig(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	utils.JSONResponse(w, map[string]any{"status": "success", "restarted": restarted}, http.StatusOK)
+	// instance names this run of the service, so a client can tell when the
+	// restarted one answers /version.
+	utils.JSONResponse(w, map[string]any{"status": "success", "restarted": restarted, "instance": s.instanceID}, http.StatusOK)
 }
 
 // mergeConfigUpdate applies a POST /api/config body to the current config as a
