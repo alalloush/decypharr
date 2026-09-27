@@ -92,16 +92,9 @@ type Server struct {
 	inflight atomic.Int64
 }
 
-func New(mgr *manager.Manager) *Server {
-	l := logger.New("http")
-	r := chi.NewRouter()
-	r.Use(middleware.Recoverer)
-	r.Use(middleware.StripSlashes)
-	r.Use(middleware.RedirectSlashes)
-
-	cfg := config.Get()
-
-	templates := template.Must(template.ParseFS(
+// parseTemplates parses every page template.
+func parseTemplates() *template.Template {
+	return template.Must(template.ParseFS(
 		content,
 		"templates/layout.html",
 		"templates/setup_layout.html",
@@ -117,6 +110,18 @@ func New(mgr *manager.Manager) *Server {
 		"templates/register.html",
 		"templates/setup.html",
 	))
+}
+
+func New(mgr *manager.Manager) *Server {
+	l := logger.New("http")
+	r := chi.NewRouter()
+	r.Use(middleware.Recoverer)
+	r.Use(middleware.StripSlashes)
+	r.Use(middleware.RedirectSlashes)
+
+	cfg := config.Get()
+
+	templates := parseTemplates()
 	cookieStore := sessions.NewCookieStore([]byte(cfg.SecretKey()))
 	cookieStore.Options = &sessions.Options{
 		Path:     "/",

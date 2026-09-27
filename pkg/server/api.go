@@ -287,9 +287,14 @@ func (s *Server) handleDeleteTorrents(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleGetConfig(w http.ResponseWriter, r *http.Request) {
-	arrStorage := s.manager.Arr()
-	cfg := *config.Get()
-	cfg.Arrs = arrStorage.SyncToConfig()
+	// A deep copy: redaction edits the provider and Arr lists in place.
+	cfg, err := config.Get().Clone()
+	if err != nil {
+		http.Error(w, "Failed to read config", http.StatusInternalServerError)
+		return
+	}
+	cfg.Arrs = s.manager.Arr().SyncToConfig()
+	redactSecrets(cfg)
 
 	// Create response with API token info
 	type ConfigResponse struct {
@@ -300,7 +305,7 @@ func (s *Server) handleGetConfig(w http.ResponseWriter, r *http.Request) {
 		AuthTokenOnly bool   `json:"auth_token_only"`
 	}
 
-	response := &ConfigResponse{Config: &cfg}
+	response := &ConfigResponse{Config: cfg}
 
 	// AddOrUpdate API token and auth information
 	auth := cfg.GetAuth()
@@ -328,6 +333,10 @@ func (s *Server) handleUpdateConfig(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			invalid = true
 			return fmt.Errorf("invalid request body: %w", err)
+		}
+		if err := restoreSecrets(current, s.manager.Arr().SyncToConfig(), body, &next); err != nil {
+			invalid = true
+			return err
 		}
 		next.MigrateVirtualFolders()
 		if err := next.ValidateVirtualFolders(); err != nil {

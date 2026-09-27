@@ -110,6 +110,16 @@ class FileBrowser {
             this.refs.clearSelectionBtn.addEventListener('click', () => this.clearSelection());
         }
 
+        // Row and pagination controls are rendered as markup, so their
+        // events are handled here by delegation.
+        this.refs.fileBrowserList.addEventListener('click', (e) => this.handleListClick(e));
+        this.refs.fileBrowserList.addEventListener('change', (e) => this.handleListChange(e));
+        this.refs.fileBrowserList.addEventListener('contextmenu', (e) => this.handleListContextMenu(e));
+        this.refs.paginationControls.addEventListener('click', (e) => {
+            const button = e.target.closest('[data-page]');
+            if (button) this.goToPage(Number(button.dataset.page));
+        });
+
         // Hide context menu on click outside
         document.addEventListener('click', (e) => {
             if (!this.refs.contextMenu.contains(e.target)) {
@@ -351,28 +361,36 @@ class FileBrowser {
 
     updateBreadcrumbs() {
         const parts = this.state.currentPath.split('/').filter(p => p);
+        const crumbs = [];
 
-        let html = `<li><a href="${window.urlBase}browse" data-path="/">
-            <i class="bi bi-house-door"></i> Home
-        </a></li>`;
+        // Built with DOM APIs: the path comes straight from the ?path= query
+        // parameter, so none of it may be parsed as markup.
+        const addCrumb = (href, path, ...content) => {
+            const link = document.createElement('a');
+            link.href = href;
+            link.dataset.path = path;
+            link.append(...content);
+            // Override default link behavior
+            link.addEventListener('click', (e) => {
+                e.preventDefault();
+                this.navigate(e.currentTarget.dataset.path);
+            });
+            const item = document.createElement('li');
+            item.appendChild(link);
+            crumbs.push(item);
+        };
+
+        const homeIcon = document.createElement('i');
+        homeIcon.className = 'bi bi-house-door';
+        addCrumb(`${window.urlBase}browse`, '/', homeIcon, ' Home');
 
         let currentPath = '';
         parts.forEach(part => {
             currentPath += '/' + part;
-            const displayName = decodeURIComponent(part);
-            html += `<li><a href="${window.urlBase}browse?path=${encodeURIComponent(currentPath)}" data-path="${currentPath}">${this.escapeHtml(displayName)}</a></li>`;
+            addCrumb(`${window.urlBase}browse?path=${encodeURIComponent(currentPath)}`, currentPath, decodeURIComponent(part));
         });
 
-        this.refs.breadcrumbNav.innerHTML = html;
-
-        // Add click handlers to override default link behavior
-        this.refs.breadcrumbNav.querySelectorAll('a').forEach(link => {
-            link.addEventListener('click', (e) => {
-                e.preventDefault();
-                const path = e.currentTarget.dataset.path;
-                this.navigate(path);
-            });
-        });
+        this.refs.breadcrumbNav.replaceChildren(...crumbs);
     }
 
     renderEntries() {
@@ -411,38 +429,40 @@ class FileBrowser {
                         <i class="bi bi-three-dots-vertical" aria-hidden="true"></i>
                     </button>
                     <ul tabindex="0" class="dropdown-content menu p-2 shadow bg-base-200 rounded-box w-56 z-50" aria-label="Actions">
-                        ${!entry.is_dir ? `<li><button type="button" onclick="window.fileBrowser.downloadFile('${this.escapeJs(entry.path)}', '${this.escapeJs(entry.name)}')"><i class="bi bi-download" aria-hidden="true"></i> Download</button></li>` : ''}
-                        ${entry.kind === 'entry' ? `<li><button type="button" onclick="window.fileBrowser.recheckEntry('${this.escapeJs(entry.name)}')"><i class="bi bi-search-heart" aria-hidden="true"></i> Recheck health</button></li>` : ''}
-                        ${entry.can_delete ? `<li><button type="button" onclick="window.fileBrowser.deleteTorrent('${this.escapeJs(entry.info_hash)}', '${this.escapeJs(entry.name)}')" class="text-error"><i class="bi bi-trash" aria-hidden="true"></i> Delete original item</button></li>` : ''}
+                        ${!entry.is_dir ? `<li><button type="button" data-action="download"><i class="bi bi-download" aria-hidden="true"></i> Download</button></li>` : ''}
+                        ${entry.kind === 'entry' ? `<li><button type="button" data-action="recheck"><i class="bi bi-search-heart" aria-hidden="true"></i> Recheck health</button></li>` : ''}
+                        ${entry.can_delete ? `<li><button type="button" data-action="delete" class="text-error"><i class="bi bi-trash" aria-hidden="true"></i> Delete original item</button></li>` : ''}
                     </ul>
                 </div>` : '<span aria-hidden="true">—</span>';
 
+            // Controls carry data-action and are handled by delegation
+            // (handleListClick and friends), which read the entry back from
+            // data-entry.
             return `
                 <tr class="group hover:bg-base-200 transition-colors"
                     data-entry='${this.escapeAttr(JSON.stringify(entry))}'
                     data-entry-id="${this.escapeAttr(entryId)}"
-                    ${isActionable ? `oncontextmenu="window.fileBrowser.showContextMenu(event, ${this.escapeAttr(JSON.stringify(entry))});"` : ''}>
-                    <td onclick="event.stopPropagation();">
+                    ${isActionable ? 'data-context-menu' : ''}>
+                    <td data-stop-click>
                         <label class="${isActionable ? 'cursor-pointer' : ''}">
                             <span class="sr-only">Select ${this.escapeHtml(entry.name)}</span>
                             <input type="checkbox" aria-label="Select ${this.escapeAttr(entry.name)}"
                                    class="checkbox checkbox-sm checkbox-primary entry-checkbox"
                                    data-entry-id="${this.escapeAttr(entryId)}"
                                    ${isChecked ? 'checked' : ''}
-                                   ${isActionable ? '' : 'disabled'}
-                                   onchange="window.fileBrowser.handleEntrySelect('${this.escapeAttr(entryId)}', this.checked, ${this.escapeAttr(JSON.stringify(entry))})">
+                                   ${isActionable ? '' : 'disabled'}>
                         </label>
                     </td>
                     <td>${icon}</td>
                     <td>
-                        ${canOpen ? `<button type="button" onclick="window.fileBrowser.handleEntryClick('${this.escapeJs(entry.path)}', ${entry.is_dir}, '${this.escapeJs(entry.name)}');" class="text-left hover:text-primary transition-colors"><span class="font-medium">${this.escapeHtml(entry.name)}</span></button>` : `<span class="font-medium">${this.escapeHtml(entry.name)}</span>`}
+                        ${canOpen ? `<button type="button" data-action="open" class="text-left hover:text-primary transition-colors"><span class="font-medium">${this.escapeHtml(entry.name)}</span></button>` : `<span class="font-medium">${this.escapeHtml(entry.name)}</span>`}
                         ${kindBadge ? `<span class="ml-2">${kindBadge}</span>` : ''}
                     </td>
                     <td>
                         ${entry.size <= 0 ? '-' : this.formatSize(entry.size)}
                     </td>
                     <td class="text-xs text-base-content/70">
-                        ${entry.mod_time || '-'}
+                        ${this.escapeHtml(entry.mod_time || '-')}
                     </td>
                     <td>
                         ${entry.active_debrid ? `<span>${this.escapeHtml(entry.active_debrid)}</span>` : '-'}
@@ -450,7 +470,7 @@ class FileBrowser {
                     <td ${entry.kind === 'entry' ? `data-health-cell="${this.escapeAttr(entry.name)}"` : ''}>
                         ${entry.kind === 'entry' ? this.healthBadge(this.state.health.get(entry.name)) : '—'}
                     </td>
-                    <td onclick="event.stopPropagation();">
+                    <td data-stop-click>
                         ${actionMenu}
                     </td>
                 </tr>
@@ -480,7 +500,7 @@ class FileBrowser {
 
         let html = `
             <button class="join-item btn btn-sm ${this.state.currentPage === 1 ? 'btn-disabled' : ''}"
-                    onclick="window.fileBrowser.goToPage(${this.state.currentPage - 1})"
+                    data-page="${this.state.currentPage - 1}"
                     ${this.state.currentPage === 1 ? 'disabled' : ''}>
                 <i class="bi bi-chevron-left"></i>
             </button>
@@ -492,7 +512,7 @@ class FileBrowser {
                 (i >= this.state.currentPage - 2 && i <= this.state.currentPage + 2)) {
                 html += `
                     <button class="join-item btn btn-sm ${i === this.state.currentPage ? 'btn-active' : ''}"
-                            onclick="window.fileBrowser.goToPage(${i})">${i}</button>
+                            data-page="${i}">${i}</button>
                 `;
             } else if (i === this.state.currentPage - 3 || i === this.state.currentPage + 3) {
                 html += `<button class="join-item btn btn-sm btn-disabled" disabled>...</button>`;
@@ -501,7 +521,7 @@ class FileBrowser {
 
         html += `
             <button class="join-item btn btn-sm ${this.state.currentPage === this.state.totalPages ? 'btn-disabled' : ''}"
-                    onclick="window.fileBrowser.goToPage(${this.state.currentPage + 1})"
+                    data-page="${this.state.currentPage + 1}"
                     ${this.state.currentPage === this.state.totalPages ? 'disabled' : ''}>
                 <i class="bi bi-chevron-right"></i>
             </button>
@@ -552,6 +572,52 @@ class FileBrowser {
                 indicator.className = 'bi bi-arrow-down-up text-xs';
             }
         });
+    }
+
+    // The entry a row was rendered from, as stored in its data-entry.
+    rowEntry(el) {
+        const row = el.closest('tr[data-entry]');
+        return row ? JSON.parse(row.dataset.entry) : null;
+    }
+
+    handleListClick(e) {
+        const control = e.target.closest('[data-action]');
+        const entry = control && this.rowEntry(control);
+        if (entry) {
+            switch (control.dataset.action) {
+                case 'open':
+                    this.handleEntryClick(entry.path, entry.is_dir, entry.name);
+                    break;
+                case 'download':
+                    this.downloadFile(entry.path, entry.name);
+                    break;
+                case 'recheck':
+                    this.recheckEntry(entry.name);
+                    break;
+                case 'delete':
+                    this.deleteTorrent(entry.info_hash, entry.name);
+                    break;
+            }
+        }
+        // Clicks in the checkbox and action cells never reach the
+        // document-level handlers (e.g. the one hiding the context menu).
+        if (e.target.closest('[data-stop-click]')) {
+            e.stopPropagation();
+        }
+    }
+
+    handleListChange(e) {
+        const checkbox = e.target.closest('.entry-checkbox');
+        if (checkbox) {
+            this.handleEntrySelect(checkbox.dataset.entryId, checkbox.checked, this.rowEntry(checkbox));
+        }
+    }
+
+    handleListContextMenu(e) {
+        const row = e.target.closest('tr[data-context-menu]');
+        if (row) {
+            this.showContextMenu(e, JSON.parse(row.dataset.entry));
+        }
     }
 
     handleEntryClick(path, isDir, name) {
@@ -654,13 +720,6 @@ class FileBrowser {
             .replace(/>/g, '&gt;')
             .replace(/'/g, '&#39;')
             .replace(/"/g, '&quot;');
-    }
-
-    escapeJs(text) {
-        if (typeof text !== 'string') {
-            text = String(text);
-        }
-        return text.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '\\"').replace(/\n/g, '\\n').replace(/\r/g, '\\r');
     }
 
     // Multi-select methods

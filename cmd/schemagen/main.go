@@ -27,20 +27,6 @@ const (
 	schemaID   = "https://github.com/alalloush/decypharr/blob/dev/fork/spec/config.schema.json"
 )
 
-// secretProperties lists config.json properties that hold credentials, by Go
-// type name and JSON property name. They are marked writeOnly so generated
-// clients never echo them back. Every entry must exist in the schema.
-var secretProperties = map[string][]string{
-	"Config":         {"session_secret", "discord_webhook_url"},
-	"Arr":            {"token"},
-	"Debrid":         {"api_key", "download_api_keys", "rc_pass"},
-	"ExternalRclone": {"rc_password"},
-	"Notifications":  {"webhook_url"},
-	"SMB":            {"password"},
-	"Strm":           {"secret"},
-	"UsenetProvider": {"password"},
-}
-
 // deprecatedPattern matches Go "Deprecated" notes, which upstream writes as
 // "Deprecated:" or "Deprecated.".
 var deprecatedPattern = regexp.MustCompile(`(?m)^Deprecated[:.]`)
@@ -226,8 +212,10 @@ func markDeprecated(schema *jsonschema.Schema) {
 	}
 }
 
+// markSecrets marks config.SecretFields writeOnly, so generated clients never
+// echo them back. Every entry must exist in the schema.
 func markSecrets(root *jsonschema.Schema) error {
-	for typeName, names := range secretProperties {
+	for typeName, names := range config.SecretFields {
 		schema := root
 		if typeName != "Config" {
 			schema = root.Definitions[typeName]

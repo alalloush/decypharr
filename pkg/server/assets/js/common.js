@@ -183,9 +183,9 @@ class DecypharrUtils {
                         ${icons[type]}
                     </svg>
                     <div class="min-w-0 flex-1 break-words">
-                        <span class="text-sm">${message.replace(/\n/g, '<br>')}</span>
+                        <span class="text-sm">${this.escapeHtml(message).replace(/\n/g, '<br>')}</span>
                     </div>
-                    <button class="btn btn-sm btn-ghost btn-circle" onclick="window.decypharrUtils.closeToast('${toastId}');">
+                    <button class="btn btn-sm btn-ghost btn-circle" data-toast-close>
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
                         </svg>
@@ -203,6 +203,7 @@ class DecypharrUtils {
         const toastElement = document.getElementById(toastId);
         if (toastElement) {
             toastElement.dataset.timeoutId = timeoutId;
+            toastElement.querySelector('[data-toast-close]').addEventListener('click', () => this.closeToast(toastId));
         }
 
         return toastId;
@@ -377,11 +378,13 @@ class DecypharrUtils {
             const versionBadge = document.getElementById('version-badge');
 
             if (versionBadge) {
+                const version = this.escapeHtml(String(data.version));
+                const channel = this.escapeHtml(String(data.channel));
                 versionBadge.innerHTML = `
-                    <a href="https://github.com/sirrobot01/decypharr/releases/tag/v${data.version}" 
+                    <a href="https://github.com/sirrobot01/decypharr/releases/tag/v${version}" 
                        target="_blank" 
                        class="text-current hover:text-primary transition-colors">
-                        ${data.channel}-${data.version}
+                        ${channel}-${version}
                     </a>
                 `;
 
@@ -675,7 +678,8 @@ class DecypharrUtils {
         }
     }
 
-    // Escape HTML
+    // Escape text for HTML content and quoted attribute values. Non-string
+    // values (API numbers, booleans) are stringified; null/undefined give ''.
     escapeHtml(text) {
         const map = {
             '&': '&amp;',
@@ -684,7 +688,7 @@ class DecypharrUtils {
             '"': '&quot;',
             "'": '&#039;'
         };
-        return text ? text.replace(/[&<>"']/g, (m) => map[m]) : '';
+        return text === null || text === undefined ? '' : String(text).replace(/[&<>"']/g, (m) => map[m]);
     }
 
     // Get current theme

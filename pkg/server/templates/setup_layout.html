@@ -13,7 +13,7 @@
     <link rel="icon" type="image/png" sizes="16x16" href="{{.URLBase}}images/favicon/favicon-16x16.png">
     <link rel="manifest" href="{{.URLBase}}images/favicon/site.webmanifest">
 
-    <script>
+    <script nonce="{{.CSPNonce}}">
         // Early theme detection to prevent FOUC
         (function () {
             const savedTheme = localStorage.getItem('theme');

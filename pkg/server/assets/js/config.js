@@ -58,11 +58,50 @@ class ConfigManager {
 		this.refs.virtualFoldersContainer.addEventListener('input', (event) => this.handleVirtualFolderInput(event));
 		this.refs.virtualFoldersContainer.addEventListener('change', (event) => this.handleVirtualFolderInput(event));
 
+        // Buttons in the rendered provider, Arr and virtual folder cards
+        // carry a data-action instead of an inline handler.
+        this.refs.configForm.addEventListener('click', (event) => this.handleFormAction(event));
+
         const addRuleBtn = document.getElementById('addQueueCleanupRuleBtn');
         if (addRuleBtn) addRuleBtn.addEventListener('click', () => this.addQueueCleanupCustomRow());
 
         const strmRegenerateBtn = document.getElementById('strmRegenerateBtn');
         if (strmRegenerateBtn) strmRegenerateBtn.addEventListener('click', () => this.regenerateStrm());
+    }
+
+    handleFormAction(event) {
+        const control = event.target.closest('[data-action]');
+        if (!control || !this.refs.configForm.contains(control)) return;
+        const data = control.dataset;
+        switch (data.action) {
+            case 'remove':
+                // data-remove names the card this button deletes.
+                control.closest(data.remove).remove();
+                break;
+            case 'show-filter-help':
+                this.showFilterHelp();
+                break;
+            case 'add-filter': {
+                const directory = control.closest('.directory-item').dataset;
+                this.addFilter(Number(directory.debridIndex), Number(directory.dirIndex), data.filterType);
+                break;
+            }
+            case 'add-vf-condition':
+                this.addVirtualFolderCondition(Number(data.folderId));
+                break;
+            case 'remove-vf-condition':
+                this.removeVirtualFolderCondition(Number(data.folderId), Number(data.conditionId));
+                break;
+            case 'apply-vf-sample':
+                this.applyVirtualFolderSample(Number(data.folderId), data.sampleKey);
+                break;
+            case 'preview-vf':
+                this.previewVirtualFolder(Number(data.folderId));
+                break;
+            case 'remove-vf':
+                this.removeVirtualFolder(Number(data.folderId));
+                break;
+        }
     }
 
     // Display labels for the built-in queue-cleanup catalog. IDs MUST match
@@ -625,7 +664,7 @@ class ConfigManager {
                         <i class="bi bi-cloud mr-2 text-secondary"></i>
                         Debrid #${index + 1}
                     </h3>
-                    <button type="button" class="btn btn-error btn-sm" onclick="this.closest('.debrid-config').remove();">
+                    <button type="button" class="btn btn-error btn-sm" data-action="remove" data-remove=".debrid-config">
                         <i class="bi bi-trash"></i>
                     </button>
                 </div>
@@ -875,11 +914,11 @@ class ConfigManager {
 
     getDirectoryTemplate(debridIndex, dirIndex) {
         return `
-            <div class="card bg-base-200 border border-base-300 directory-item">
+            <div class="card bg-base-200 border border-base-300 directory-item" data-debrid-index="${debridIndex}" data-dir-index="${dirIndex}">
                 <div class="card-body">
                     <div class="mb-4 flex items-start justify-between gap-3">
                         <h5 class="text-lg font-medium">Virtual Directory</h5>
-                        <button type="button" class="btn btn-error btn-xs" onclick="this.closest('.directory-item').remove();">
+                        <button type="button" class="btn btn-error btn-xs" data-action="remove" data-remove=".directory-item">
                             <i class="bi bi-trash"></i>
                         </button>
                     </div>
@@ -897,7 +936,7 @@ class ConfigManager {
                         <div class="flex justify-between items-center">
                             <h6 class="font-medium flex items-center">
                                 Filters
-                                <button type="button" class="btn btn-ghost btn-xs ml-2" onclick="configManager.showFilterHelp();">
+                                <button type="button" class="btn btn-ghost btn-xs ml-2" data-action="show-filter-help">
                                     <i class="bi bi-question-circle"></i>
                                 </button>
                             </h6>
@@ -913,14 +952,14 @@ class ConfigManager {
                                     <i class="bi bi-chevron-down ml-1"></i>
                                 </div>
                                 <ul tabindex="0" class="dropdown-content menu bg-base-100 rounded-box z-[1] w-48 p-2 shadow">
-                                    <li><a onclick="configManager.addFilter(${debridIndex}, ${dirIndex}, 'include');">Include</a></li>
-                                    <li><a onclick="configManager.addFilter(${debridIndex}, ${dirIndex}, 'exclude');">Exclude</a></li>
-                                    <li><a onclick="configManager.addFilter(${debridIndex}, ${dirIndex}, 'starts_with');">Starts With</a></li>
-                                    <li><a onclick="configManager.addFilter(${debridIndex}, ${dirIndex}, 'not_starts_with');">Not Starts With</a></li>
-                                    <li><a onclick="configManager.addFilter(${debridIndex}, ${dirIndex}, 'ends_with');">Ends With</a></li>
-                                    <li><a onclick="configManager.addFilter(${debridIndex}, ${dirIndex}, 'not_ends_with');">Not Ends With</a></li>
-                                    <li><a onclick="configManager.addFilter(${debridIndex}, ${dirIndex}, 'exact_match');">Exact Match</a></li>
-                                    <li><a onclick="configManager.addFilter(${debridIndex}, ${dirIndex}, 'not_exact_match');">Not Exact Match</a></li>
+                                    <li><a data-action="add-filter" data-filter-type="include">Include</a></li>
+                                    <li><a data-action="add-filter" data-filter-type="exclude">Exclude</a></li>
+                                    <li><a data-action="add-filter" data-filter-type="starts_with">Starts With</a></li>
+                                    <li><a data-action="add-filter" data-filter-type="not_starts_with">Not Starts With</a></li>
+                                    <li><a data-action="add-filter" data-filter-type="ends_with">Ends With</a></li>
+                                    <li><a data-action="add-filter" data-filter-type="not_ends_with">Not Ends With</a></li>
+                                    <li><a data-action="add-filter" data-filter-type="exact_match">Exact Match</a></li>
+                                    <li><a data-action="add-filter" data-filter-type="not_exact_match">Not Exact Match</a></li>
                                 </ul>
                             </div>
 
@@ -930,8 +969,8 @@ class ConfigManager {
                                     <i class="bi bi-chevron-down ml-1"></i>
                                 </div>
                                 <ul tabindex="0" class="dropdown-content menu bg-base-100 rounded-box z-[1] w-48 p-2 shadow">
-                                    <li><a onclick="configManager.addFilter(${debridIndex}, ${dirIndex}, 'regex');">Regex Match</a></li>
-                                    <li><a onclick="configManager.addFilter(${debridIndex}, ${dirIndex}, 'not_regex');">Regex Doesn't Match</a></li>
+                                    <li><a data-action="add-filter" data-filter-type="regex">Regex Match</a></li>
+                                    <li><a data-action="add-filter" data-filter-type="not_regex">Regex Doesn't Match</a></li>
                                 </ul>
                             </div>
 
@@ -941,12 +980,12 @@ class ConfigManager {
                                     <i class="bi bi-chevron-down ml-1"></i>
                                 </div>
                                 <ul tabindex="0" class="dropdown-content menu bg-base-100 rounded-box z-[1] w-48 p-2 shadow">
-                                    <li><a onclick="configManager.addFilter(${debridIndex}, ${dirIndex}, 'size_gt');">Size Greater Than</a></li>
-                                    <li><a onclick="configManager.addFilter(${debridIndex}, ${dirIndex}, 'size_lt');">Size Less Than</a></li>
+                                    <li><a data-action="add-filter" data-filter-type="size_gt">Size Greater Than</a></li>
+                                    <li><a data-action="add-filter" data-filter-type="size_lt">Size Less Than</a></li>
                                 </ul>
                             </div>
 
-                            <button type="button" class="btn btn-outline btn-sm" onclick="configManager.addFilter(${debridIndex}, ${dirIndex}, 'last_added');">
+                            <button type="button" class="btn btn-outline btn-sm" data-action="add-filter" data-filter-type="last_added">
                                 <i class="bi bi-clock mr-1"></i>Last Added Filter
                             </button>
                         </div>
@@ -981,22 +1020,25 @@ class ConfigManager {
 
     getFilterTemplate(debridIndex, dirIndex, filterIndex, filterType) {
         const filterConfig = this.getFilterConfig(filterType);
+        // Filter types are keys of the loaded config, so escape them and the
+        // label derived from unknown ones.
+        const esc = window.decypharrUtils.escapeHtml;
 
         return `
             <div class="filter-item flex items-center gap-3 p-3 bg-base-100 rounded-lg border border-base-300">
                 <div class="badge ${filterConfig.badgeClass} badge-sm">
-                    ${filterConfig.label}
+                    ${esc(filterConfig.label)}
                 </div>
                 <input type="hidden"
                        name="debrid[${debridIndex}].directory[${dirIndex}].filter[${filterIndex}].type"
-                       value="${filterType}">
+                       value="${esc(filterType)}">
                 <div class="flex-1">
                     <input type="text" 
                            class="input input-sm w-full webdav-field"
                            name="debrid[${debridIndex}].directory[${dirIndex}].filter[${filterIndex}].value"
-                           placeholder="${filterConfig.placeholder}">
+                           placeholder="${esc(filterConfig.placeholder)}">
                 </div>
-                <button type="button" class="btn btn-error btn-xs" onclick="this.closest('.filter-item').remove();">
+                <button type="button" class="btn btn-error btn-xs" data-action="remove" data-remove=".filter-item">
                     <i class="bi bi-x"></i>
                 </button>
             </div>
@@ -1220,13 +1262,13 @@ class ConfigManager {
                             ${isAutoDetected ? '<span class="badge badge-info badge-sm shrink-0">Auto-detected</span>' : ''}
                         </h3>
                         ${!isAutoDetected ? `
-                            <button type="button" class="btn btn-error btn-sm btn-square shrink-0" onclick="this.closest('.arr-config').remove();">
+                            <button type="button" class="btn btn-error btn-sm btn-square shrink-0" data-action="remove" data-remove=".arr-config">
                                 <i class="bi bi-trash"></i>
                             </button>
                         ` : ''}
                     </div>
 
-                    <input type="hidden" name="arr[${index}].source" value="${data.source || ''}">
+                    <input type="hidden" name="arr[${index}].source" value="${window.decypharrUtils.escapeHtml(data.source || '')}">
 
                     <div class="grid grid-cols-1 gap-3">
                         <div>
@@ -1664,14 +1706,14 @@ class ConfigManager {
                 slot_strategy: providerInput.value === 'alldebrid' ? (slotStrategyInput?.value || "") : ""
             };
 
-            // Handle download API keys
-            if (downloadKeysTextarea && downloadKeysTextarea.value.trim()) {
+            // Handle download API keys. The server keeps the stored keys when
+            // the property is omitted, so an emptied textarea sends [] to
+            // clear them ("********" lines keep the stored key at that index).
+            if (downloadKeysTextarea) {
                 debrid.download_api_keys = downloadKeysTextarea.value
                     .split('\n')
                     .map(key => key.trim())
                     .filter(key => key.length > 0);
-            } else {
-                delete debrid.download_api_keys;
             }
 
             debrid.torrents_refresh_interval = torrentsRefreshIntervalInput.value;
@@ -2141,7 +2183,7 @@ class ConfigManager {
                         ${this.virtualFolderValueControl(folderId, conditionId, normalized)}
                     </div>
                     <button type="button" class="btn btn-ghost btn-square text-error" aria-label="Remove this condition"
-                            title="Remove condition" onclick="configManager.removeVirtualFolderCondition(${folderId}, ${conditionId})">
+                            title="Remove condition" data-action="remove-vf-condition" data-folder-id="${folderId}" data-condition-id="${conditionId}">
                         <i class="bi bi-trash" aria-hidden="true"></i>
                     </button>
                 </div>
@@ -2165,7 +2207,7 @@ class ConfigManager {
             <div class="mt-3 flex flex-wrap gap-2" role="group" aria-labelledby="${labelId}" aria-describedby="${helpId}">
                 ${this.virtualFolderSamples.map(sample => `<button type="button" class="btn btn-sm btn-outline bg-base-100"
                     title="${esc(sample.description)}" aria-label="${esc(`${sample.label}: ${sample.description}`)}"
-                    onclick="configManager.applyVirtualFolderSample(${folderId}, '${sample.key}')">${esc(sample.label)}</button>`).join('')}
+                    data-action="apply-vf-sample" data-folder-id="${folderId}" data-sample-key="${esc(sample.key)}">${esc(sample.label)}</button>`).join('')}
             </div>
         </div>`;
     }
@@ -2191,7 +2233,7 @@ class ConfigManager {
                             <h4 id="virtual_folder_${id}_title" class="mt-1 text-lg font-semibold" data-vf-title>${esc(title)}</h4>
                         </div>
                         <button type="button" class="btn btn-ghost btn-sm btn-square" aria-label="Remove virtual folder ${esc(title)}"
-                                title="Remove virtual folder" onclick="configManager.removeVirtualFolder(${id})">
+                                title="Remove virtual folder" data-action="remove-vf" data-folder-id="${id}">
                             <i class="bi bi-x-lg" aria-hidden="true"></i>
                         </button>
                     </div>
@@ -2226,7 +2268,7 @@ class ConfigManager {
                                 <p class="font-semibold" aria-hidden="true">Conditions</p>
                                 <p class="text-xs text-base-content/65">Text matching ignores capitalization unless you opt in per condition.</p>
                             </div>
-                            <button type="button" class="btn btn-sm btn-outline btn-info" onclick="configManager.addVirtualFolderCondition(${id})">
+                            <button type="button" class="btn btn-sm btn-outline btn-info" data-action="add-vf-condition" data-folder-id="${id}">
                                 <i class="bi bi-plus-lg" aria-hidden="true"></i> Add condition
                             </button>
                         </div>
@@ -2237,7 +2279,7 @@ class ConfigManager {
 
                     <div class="flex flex-col gap-3 border-t border-base-300 pt-4 sm:flex-row sm:items-center sm:justify-between">
                         <p class="text-xs text-base-content/65"><i class="bi bi-shield-check mr-1" aria-hidden="true"></i>Removing this folder removes only the view, never the media.</p>
-                        <button type="button" class="btn btn-sm btn-secondary" data-vf-preview-button onclick="configManager.previewVirtualFolder(${id})">
+                        <button type="button" class="btn btn-sm btn-secondary" data-vf-preview-button data-action="preview-vf" data-folder-id="${id}">
                             <i class="bi bi-eye" aria-hidden="true"></i> Preview matches
                         </button>
                     </div>
@@ -2435,7 +2477,7 @@ class ConfigManager {
             if (!response.ok) throw new Error((await response.text()).trim() || 'Preview failed');
             const preview = await response.json();
             const samples = Array.isArray(preview.samples) ? preview.samples : [];
-            result.innerHTML = `<p class="font-semibold">${preview.total} matching item${preview.total === 1 ? '' : 's'}</p>
+            result.innerHTML = `<p class="font-semibold">${window.decypharrUtils.escapeHtml(preview.total)} matching item${preview.total === 1 ? '' : 's'}</p>
                 ${samples.length ? `<p class="mt-1 text-xs text-base-content/65">A few examples:</p><ul class="mt-2 space-y-1">${samples.map(item => `<li class="flex flex-wrap justify-between gap-2"><span>${window.decypharrUtils.escapeHtml(item.name)}</span><span class="text-xs text-base-content/60">${window.decypharrUtils.escapeHtml(item.provider || item.protocol || '')}${item.size ? ` · ${window.decypharrUtils.formatBytes(item.size)}` : ''}</span></li>`).join('')}</ul>` : '<p class="mt-1 text-base-content/65">No current item matches these conditions.</p>'}`;
         } catch (error) {
             result.innerHTML = `<p class="text-error">Could not preview: ${window.decypharrUtils.escapeHtml(error.message)}</p>`;
@@ -2517,7 +2559,7 @@ class ConfigManager {
                         <i class="bi bi-server mr-2"></i>
                         Provider #${index + 1}
                     </h4>
-                    <button type="button" class="btn btn-error btn-sm" onclick="this.closest('.usenet-provider').remove();">
+                    <button type="button" class="btn btn-error btn-sm" data-action="remove" data-remove=".usenet-provider">
                         <i class="bi bi-trash"></i>
                     </button>
                 </div>

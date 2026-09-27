@@ -220,7 +220,7 @@
             <div id="reacquireError" class="alert alert-error py-2 text-sm hidden"></div>
 
             <div class="modal-action">
-                <button type="button" class="btn btn-ghost btn-sm" onclick="document.getElementById('reacquireModal').close()">
+                <button type="button" id="reacquireCancelBtn" class="btn btn-ghost btn-sm">
                     Cancel
                 </button>
                 <button type="submit" id="reacquireSubmit" class="btn btn-primary btn-sm" disabled>
@@ -234,7 +234,7 @@
     </form>
 </dialog>
 
-<script>
+<script nonce="{{.CSPNonce}}">
     document.addEventListener('DOMContentLoaded', () => {
         window.reacquireManager = new ReacquireManager();
     });
