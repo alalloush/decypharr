@@ -3,6 +3,7 @@ package webdav
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/sirrobot01/decypharr/internal/config"
@@ -138,7 +139,7 @@ func TestWebDAVDeleteIsOptIn(t *testing.T) {
 	if _, err := m.Storage().Get(testInfohash); err != nil {
 		t.Fatalf("a refused DELETE removed the entry: %v", err)
 	}
-	if allow := do(t, http.MethodOptions, srv.URL+"/", login).Header.Get("Allow"); allow != "OPTIONS, GET, HEAD, PROPFIND, COPY, MOVE" {
+	if allow := do(t, http.MethodOptions, srv.URL+"/", login).Header.Get("Allow"); allow != "OPTIONS, GET, HEAD, PROPFIND" {
 		t.Fatalf("read-only Allow = %q", allow)
 	}
 
@@ -147,5 +148,29 @@ func TestWebDAVDeleteIsOptIn(t *testing.T) {
 	config.Get().WebdavAllowDelete = true
 	if resp := do(t, http.MethodDelete, folder, login); resp.StatusCode == http.StatusForbidden {
 		t.Fatal("DELETE with webdav_allow_delete is still refused")
+	}
+}
+
+// COPY and MOVE answered 500 (CopyEntry always failed), a status clients
+// such as rclone retry. The tree mirrors the debrid accounts, so neither can
+// work, with or without webdav_allow_delete: 405, and Allow never lists them.
+func TestWebDAVRefusesCopyAndMove(t *testing.T) {
+	srv, m := newWebDAVServer(t)
+	for _, allowDelete := range []bool{false, true} {
+		config.Get().WebdavAllowDelete = allowDelete
+		for _, method := range []string{"COPY", "MOVE"} {
+			for _, target := range []string{"/__all__/Movie.2023", "/__all__/Movie.2023/Movie.2023.mkv"} {
+				resp := do(t, method, srv.URL+target, func(r *http.Request) {
+					r.SetBasicAuth("admin", "secret")
+					r.Header.Set("Destination", srv.URL+"/__all__/Renamed")
+				})
+				if allow := resp.Header.Get("Allow"); resp.StatusCode != http.StatusMethodNotAllowed || strings.Contains(allow, method) {
+					t.Errorf("%s %s (webdav_allow_delete %t) = %d, Allow %q; want 405 without %s", method, target, allowDelete, resp.StatusCode, allow, method)
+				}
+			}
+		}
+	}
+	if _, err := m.Storage().Get(testInfohash); err != nil {
+		t.Fatalf("a refused MOVE removed the entry: %v", err)
 	}
 }

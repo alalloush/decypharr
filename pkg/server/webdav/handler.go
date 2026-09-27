@@ -104,12 +104,8 @@ func (h *Handler) handler(current *manager.FileInfo, children []manager.FileInfo
 		h.handleDelete(current, w, r)
 	case PROPFIND:
 		h.handlePropfind(current, children, w, r)
-	case "COPY":
-		h.handleCopy(current, w, r, false)
 	case "OPTIONS":
 		h.handleOptions(w, r)
-	case "MOVE":
-		h.handleCopy(current, w, r, true)
 	default:
 		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
 		return
@@ -153,14 +149,16 @@ func (h *Handler) handleTorrentFile(w http.ResponseWriter, r *http.Request) {
 
 // commonMiddleware advertises what the server implements. It sends no CORS
 // headers: WebDAV clients are not web pages, and allowing every origin let
-// any page a LAN user opened list the library and delete from it.
+// any page a LAN user opened list the library and delete from it. COPY and
+// MOVE are never listed: the tree mirrors the debrid accounts, so there is
+// nowhere to put a copy and nothing to rename, and they get 405.
 func (h *Handler) commonMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("DAV", "1, 2")
 		if config.Get().WebdavAllowDelete {
-			w.Header().Set("Allow", "OPTIONS, GET, HEAD, PROPFIND, DELETE, COPY, MOVE")
+			w.Header().Set("Allow", "OPTIONS, GET, HEAD, PROPFIND, DELETE")
 		} else {
-			w.Header().Set("Allow", "OPTIONS, GET, HEAD, PROPFIND, COPY, MOVE")
+			w.Header().Set("Allow", "OPTIONS, GET, HEAD, PROPFIND")
 		}
 		next.ServeHTTP(w, r)
 	})

@@ -49,21 +49,6 @@ func (h *Handler) handleHead(entry *manager.FileInfo, w http.ResponseWriter, r *
 	w.WriteHeader(http.StatusOK)
 }
 
-func (h *Handler) handleCopy(current *manager.FileInfo, w http.ResponseWriter, r *http.Request, delete bool) {
-	destHeader := r.Header.Get("Destination")
-	if destHeader == "" {
-		http.Error(w, "Bad Request: Missing Destination header", http.StatusBadRequest)
-		return
-	}
-	destPath := path.Clean(destHeader)
-	err := h.manager.CopyEntry(current, destPath, delete)
-	if err != nil {
-		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-		return
-	}
-	w.WriteHeader(http.StatusCreated) // 201 Created
-}
-
 // handleOptions answers with the DAV and Allow headers commonMiddleware set.
 func (h *Handler) handleOptions(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
