@@ -25,8 +25,9 @@ const (
 	cachedFileName  = "movie.mkv"
 )
 
-// stallingOrigin is a DFS backend whose upstream never delivers: opening a
-// stream blocks until the downloader is stopped.
+// stallingOrigin is a DFS backend whose upstream never delivers. Like the
+// manager's session, opening is lazy; reads block until the downloader
+// cancels them.
 type stallingOrigin struct{ entry *storage.Entry }
 
 func (o stallingOrigin) GetEntryByName(string, string) (*storage.Entry, error) {
@@ -35,9 +36,19 @@ func (o stallingOrigin) GetEntryByName(string, string) (*storage.Entry, error) {
 func (stallingOrigin) TrackStream(*storage.Entry, string, string) string { return "stream" }
 func (stallingOrigin) UntrackStream(string)                              {}
 func (stallingOrigin) OpenStreamUntrackedForCache(ctx context.Context, _ *storage.Entry, _ string, _ int64) (manager.StreamReader, error) {
-	<-ctx.Done()
-	return nil, ctx.Err()
+	return stallingStream{ctx}, nil
 }
+
+type stallingStream struct{ ctx context.Context }
+
+func (s stallingStream) Read([]byte) (int, error) {
+	<-s.ctx.Done()
+	return 0, s.ctx.Err()
+}
+func (stallingStream) Seek(off int64, _ int) (int64, error) { return off, nil }
+func (stallingStream) Close() error                         { return nil }
+func (stallingStream) Size() int64                          { return 0 }
+func (stallingStream) Prime() error                         { return nil }
 
 // openCachedFile opens a DFS file of size bytes whose cache metadata says
 // [0, cached) is on disk. After the item opens, its data file is cut to
