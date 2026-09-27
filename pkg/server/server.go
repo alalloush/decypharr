@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"html/template"
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -71,6 +72,16 @@ const shutdownGrace = 5 * time.Second
 // is for one that ignores it (utils.DownloadFile takes no context) and must
 // not hold a restart open indefinitely.
 const handlerGrace = 30 * time.Second
+
+// readHeaderTimeout bounds how long a client may take to send a request's
+// headers, so a connection that sends nothing, or trickles its headers
+// (slowloris), cannot hold a socket and a goroutine open indefinitely.
+const readHeaderTimeout = 10 * time.Second
+
+// idleTimeout closes a kept-alive connection that has not started another
+// request for this long. It is longer than the 90 s after which Go's default
+// HTTP client drops idle connections, so such clients close first.
+const idleTimeout = 2 * time.Minute
 
 type Server struct {
 	router       *chi.Mux
@@ -205,28 +216,48 @@ func (s *Server) Restart() {
 	}
 }
 
+// Start serves the UI, API and WebDAV until ctx is done. It returns an error
+// when the listener cannot bind (the port is taken, or the host has no such
+// address), so the process exits instead of running on without HTTP.
 func (s *Server) Start(ctx context.Context) error {
 	cfg := config.Get()
+
+	addr := fmt.Sprintf("%s:%s", cfg.BindAddress, cfg.Port)
+	listener, err := net.Listen("tcp", addr)
+	if err != nil {
+		return fmt.Errorf("HTTP server cannot listen on %s: %w", addr, err)
+	}
 
 	// Start background stats collector
 	s.stats.Start(ctx)
 
-	addr := fmt.Sprintf("%s:%s", cfg.BindAddress, cfg.Port)
 	s.logger.Info().Msgf("Starting server on %s%s", addr, cfg.URLBase)
-	srv := &http.Server{
-		Addr:    addr,
-		Handler: s.trackInflight(s.router),
+	srv := newHTTPServer(s.trackInflight(s.router), readHeaderTimeout, idleTimeout)
+	served := make(chan error, 1)
+	go func() { served <- srv.Serve(listener) }()
+
+	select {
+	case <-ctx.Done():
+		s.logger.Info().Msg("Shutting down gracefully...")
+		return s.stop(srv, shutdownGrace, handlerGrace)
+	case err := <-served:
+		// Serve returns on its own only when accepting connections fails for
+		// good; that is the same outage as a failed bind.
+		_ = s.stop(srv, shutdownGrace, handlerGrace)
+		return fmt.Errorf("HTTP server stopped accepting connections: %w", err)
 	}
+}
 
-	go func() {
-		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			s.logger.Error().Err(err).Msgf("Error starting server")
-		}
-	}()
-
-	<-ctx.Done()
-	s.logger.Info().Msg("Shutting down gracefully...")
-	return s.stop(srv, shutdownGrace, handlerGrace)
+// newHTTPServer bounds only the time a client takes to send its headers and
+// to start its next request on a kept-alive connection. ReadTimeout and
+// WriteTimeout cover whole bodies: they would cut off a slow upload, and a
+// WebDAV or STRM stream that a player reads for hours.
+func newHTTPServer(handler http.Handler, headerTimeout, idle time.Duration) *http.Server {
+	return &http.Server{
+		Handler:           handler,
+		ReadHeaderTimeout: headerTimeout,
+		IdleTimeout:       idle,
+	}
 }
 
 func (s *Server) trackInflight(next http.Handler) http.Handler {
