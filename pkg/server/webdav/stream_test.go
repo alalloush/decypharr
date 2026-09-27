@@ -21,6 +21,8 @@ func newStreamServer(t *testing.T) (*httptest.Server, *storage.Entry) {
 	config.Reset()
 	config.SetConfigPath(t.TempDir())
 	t.Cleanup(config.Reset)
+	// A fresh config has use_auth on; the auth tests turn it back on.
+	config.Get().UseAuth = false
 
 	m := manager.New()
 	t.Cleanup(func() { _ = m.Storage().Close() })
@@ -93,7 +95,6 @@ func TestStreamAuth(t *testing.T) {
 	srv, entry := newStreamServer(t)
 	cfg := config.Get()
 	cfg.UseAuth = true
-	cfg.EnableWebdavAuth = true
 
 	// No signature: 401 with a Basic challenge.
 	resp, err := http.Head(streamURL(srv, entry, ""))

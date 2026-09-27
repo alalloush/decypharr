@@ -27,16 +27,13 @@ func (h *Handler) handleStream(w http.ResponseWriter, r *http.Request) {
 	infohash := chi.URLParam(r, "infohash")
 	fileID := chi.URLParam(r, "fileID")
 
-	// While WebDAV auth is on the route stays authenticated via the URL
-	// signature; Basic auth is accepted as a curl/debug fallback. Signatures
-	// are always written, so enabling auth later breaks nothing.
-	if cfg.UseAuth && cfg.EnableWebdavAuth &&
-		!strm.Verify(cfg.Strm.Secret, infohash, fileID, r.URL.Query().Get("s")) {
-		if user, pass, ok := r.BasicAuth(); !ok || !config.VerifyAuth(user, pass) {
-			w.Header().Set("WWW-Authenticate", `Basic realm="Restricted"`)
-			http.Error(w, "Unauthorized", http.StatusUnauthorized)
-			return
-		}
+	// While auth is on the route stays authenticated via the URL signature;
+	// the WebDAV credentials are accepted as a curl/debug fallback.
+	// Signatures are always written, so enabling auth later breaks nothing.
+	if cfg.UseAuth && !strm.Verify(cfg.Strm.Secret, infohash, fileID, r.URL.Query().Get("s")) && !h.authorized(cfg, r) {
+		w.Header().Set("WWW-Authenticate", `Basic realm="Restricted"`)
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
 	}
 
 	entry, err := h.manager.GetEntry(infohash)

@@ -902,9 +902,6 @@
     "remove_stalled_after": {
       "type": "string"
     },
-    "enable_webdav_auth": {
-      "type": "boolean"
-    },
     "use_auth": {
       "type": "boolean"
     },
@@ -914,6 +911,10 @@
     },
     "disable_webdav": {
       "type": "boolean"
+    },
+    "webdav_allow_delete": {
+      "type": "boolean",
+      "description": "WebdavAllowDelete lets WebDAV clients DELETE entries. Deleting a\ntorrent folder, or its last file, deletes the torrent from the debrid\nprovider, so WebDAV is read-only unless this is set."
     },
     "notifications": {
       "$ref": "#/$defs/Notifications",

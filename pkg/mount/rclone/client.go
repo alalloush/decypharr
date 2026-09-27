@@ -223,7 +223,9 @@ func (m *Manager) unmount(ctx context.Context) {
 	m.logger.Info().Msg("Unmount completed")
 }
 
-// createConfig creates an rclone config entry for the provider
+// createConfig creates an rclone config entry for the provider. WebDAV asks
+// for credentials whenever use_auth is on, so the remote always carries the
+// mount token; it keeps working if auth is turned on later.
 func (m *Manager) createConfig() error {
 	args := map[string]any{
 		"name": ConfigName,
@@ -232,6 +234,7 @@ func (m *Manager) createConfig() error {
 			"url":             m.webdavURL,
 			"vendor":          "other",
 			"pacer_min_sleep": "0",
+			"bearer_token":    config.Get().WebDAVMountToken(),
 		},
 	}
 	if err := m.client.CreateConfig(context.Background(), args); err != nil {

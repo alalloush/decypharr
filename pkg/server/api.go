@@ -346,7 +346,6 @@ func (s *Server) handleUpdateConfig(w http.ResponseWriter, r *http.Request) {
 		next.Auth = current.Auth
 		next.SessionSecret = current.SessionSecret
 		next.UseAuth = current.UseAuth
-		next.EnableWebdavAuth = current.EnableWebdavAuth
 		if next.Strm.Secret == "" {
 			next.Strm.Secret = current.Strm.Secret
 		}
@@ -957,10 +956,6 @@ func (s *Server) handleUpdateAuth(w http.ResponseWriter, r *http.Request) {
 		response["message"] = "Token-only authentication enabled"
 		if auth := cfg.GetAuth(); auth != nil {
 			response["token"] = auth.APIToken
-		}
-		if cfg.EnableWebdavAuth {
-			response["message"] += ". WebDAV auth is still enabled but has no credential to accept — turn it off, or WebDAV clients will be rejected"
-			s.logger.Warn().Msg("Token-only auth enabled while WebDAV auth is on")
 		}
 	}
 	utils.JSONResponse(w, response, http.StatusOK)

@@ -37,7 +37,7 @@ Behaviour as of upstream `beta` 249ac9e plus this fork:
 | `DECYPHARR_MIN_FILE_SIZE` | `min_file_size` | string | Size such as `100MB`. |
 | `DECYPHARR_MAX_FILE_SIZE` | `max_file_size` | string | Size such as `50GB`. |
 | `DECYPHARR_REMOVE_STALLED_AFTER` | `remove_stalled_after` | string | Duration. |
-| `DECYPHARR_ENABLE_WEBDAV_AUTH` | `enable_webdav_auth` | bool | |
+| `DECYPHARR_WEBDAV_ALLOW_DELETE` | `webdav_allow_delete` | bool | Fork addition. WebDAV is read-only unless set: a DELETE of a torrent folder, or of its last file, deletes the torrent from the debrid provider. Replaces `enable_webdav_auth`; WebDAV now asks for credentials whenever `use_auth` is on. |
 | `DECYPHARR_RETRIES` | `retries` | int | |
 | `DECYPHARR_SKIP_AUTO_MOVE` | `skip_auto_move` | bool | |
 | `DECYPHARR_CATEGORIES__N` | `categories[N]` | string | N from 0 to 99. Reading stops at the first unset index. |

@@ -1,7 +1,10 @@
 package config
 
 import (
+	"crypto/hmac"
+	"crypto/sha256"
 	"crypto/subtle"
+	"encoding/hex"
 	"errors"
 	"fmt"
 
@@ -26,9 +29,9 @@ func VerifyAuth(username, password string) bool {
 
 // VerifyToken reports whether token matches the configured API token.
 //
-// This is kept out of VerifyAuth on purpose. The token authenticates the HTTP
-// API surfaces (web API, qBittorrent, SABnzbd) only; WebDAV goes through
-// VerifyAuth and must never be unlocked by an API token.
+// It is kept out of VerifyAuth, which checks a username and password; every
+// HTTP surface (web API, qBittorrent, SABnzbd, WebDAV) accepts either, so a
+// token-only install can still authenticate its clients.
 func VerifyToken(token string) bool {
 	if token == "" {
 		return false
@@ -38,6 +41,17 @@ func VerifyToken(token string) bool {
 		return false
 	}
 	return subtle.ConstantTimeCompare([]byte(token), []byte(auth.APIToken)) == 1
+}
+
+// WebDAVMountToken is the bearer token decypharr's own rclone mount presents
+// to its WebDAV server, which requires auth whenever use_auth is on. It is
+// derived from the session signing key, so it holds across restarts without
+// being stored, is unaffected by refreshing the API token, and changes with
+// the session secret.
+func (c *Config) WebDAVMountToken() string {
+	mac := hmac.New(sha256.New, []byte(c.SecretKey()))
+	mac.Write([]byte("decypharr webdav mount"))
+	return hex.EncodeToString(mac.Sum(nil))
 }
 
 // SetCredentials stores username and a bcrypt hash of password, enables auth,

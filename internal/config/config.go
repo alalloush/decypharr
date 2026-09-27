@@ -272,12 +272,15 @@ type Config struct {
 	MinFileSize        string   `json:"min_file_size,omitempty"`
 	MaxFileSize        string   `json:"max_file_size,omitempty"`
 	RemoveStalledAfter string   `json:"remove_stalled_after,omitzero"`
-	EnableWebdavAuth   bool     `json:"enable_webdav_auth,omitempty"`
 	UseAuth            bool     `json:"use_auth,omitempty"`
 	NZBUserAgent       string   `json:"nzb_user_agent,omitempty"` // User agent for downloading NZBs
 	Auth               *Auth    `json:"-"`
 
 	DisableWebDav bool `json:"disable_webdav,omitempty"`
+	// WebdavAllowDelete lets WebDAV clients DELETE entries. Deleting a
+	// torrent folder, or its last file, deletes the torrent from the debrid
+	// provider, so WebDAV is read-only unless this is set.
+	WebdavAllowDelete bool `json:"webdav_allow_delete,omitempty"`
 
 	// Notifications configuration
 	Notifications Notifications `json:"notifications"`
@@ -767,9 +770,10 @@ func clearHotFields(c *Config) {
 	c.AppURL = ""
 
 	// Auth toggles are evaluated live per-request by every auth middleware
-	// (main app, qbit, sabnzbd, and webdav), so they apply without a restart.
+	// (main app, qbit, sabnzbd, and webdav), so they apply without a restart,
+	// and so is the WebDAV delete switch.
 	c.UseAuth = false
-	c.EnableWebdavAuth = false
+	c.WebdavAllowDelete = false
 
 	// These settings are read from the current snapshot or applied explicitly.
 	// Worker limits, schedules, retry limits, and notification clients need a restart.

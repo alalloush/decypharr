@@ -318,7 +318,7 @@ func collectAccess(cfg *config.Config) AccessStats {
 			Enabled:      !cfg.DisableWebDav,
 			Path:         webdavPath,
 			Port:         cfg.Port,
-			AuthRequired: cfg.UseAuth && cfg.EnableWebdavAuth,
+			AuthRequired: cfg.UseAuth,
 		},
 		NFS: NFSAccess{
 			Enabled: cfg.NFS.Enabled,

@@ -64,9 +64,8 @@ func (h *Handler) handleCopy(current *manager.FileInfo, w http.ResponseWriter, r
 	w.WriteHeader(http.StatusCreated) // 201 Created
 }
 
+// handleOptions answers with the DAV and Allow headers commonMiddleware set.
 func (h *Handler) handleOptions(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Allow", "OPTIONS, GET, HEAD, PUT, DELETE, MKCOL, COPY, MOVE, PROPFIND")
-	w.Header().Set("DAV", "1, 2")
 	w.WriteHeader(http.StatusOK)
 }
 
