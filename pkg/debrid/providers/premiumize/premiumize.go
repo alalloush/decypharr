@@ -26,9 +26,9 @@ import (
 	"github.com/sirrobot01/decypharr/internal/utils"
 	"github.com/sirrobot01/decypharr/pkg/debrid/account"
 	"github.com/sirrobot01/decypharr/pkg/debrid/common"
+	"github.com/sirrobot01/decypharr/pkg/debrid/throttle"
 	"github.com/sirrobot01/decypharr/pkg/debrid/types"
 	"github.com/sirrobot01/decypharr/pkg/version"
-	"go.uber.org/ratelimit"
 )
 
 const (
@@ -46,12 +46,11 @@ type Premiumize struct {
 	autoExpiresLinksAfter time.Duration
 	logger                zerolog.Logger
 	config                config.Debrid
-	profile               *types.Profile
-	profileLastFetched    time.Time
+	profile               types.ProfileCache
 	validateFileAllowed   func(string, int64) error
 }
 
-func New(dc config.Debrid, ratelimits map[string]ratelimit.Limiter) (*Premiumize, error) {
+func New(dc config.Debrid, lanes throttle.Lanes) (*Premiumize, error) {
 	cfg := config.Get()
 	_log := logger.New(dc.Name)
 	headers := map[string]string{
@@ -72,8 +71,9 @@ func New(dc config.Debrid, ratelimits map[string]ratelimit.Limiter) (*Premiumize
 		request.WithHeaders(headers),
 		request.WithLogger(_log),
 		request.WithMaxRetries(cfg.Retries),
-		request.WithRateLimiter(ratelimits["main"]),
+		request.WithRateLimiter(lanes.API),
 		request.WithRetryableStatus(http.StatusTooManyRequests, http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout),
+		request.WithInsecureSkipVerify(dc.InsecureSkipVerify),
 	}
 	if dc.Proxy != "" {
 		opts = append(opts, request.WithProxy(dc.Proxy))
@@ -83,7 +83,7 @@ func New(dc config.Debrid, ratelimits map[string]ratelimit.Limiter) (*Premiumize
 		Host:                  dc.APIBaseURL(defaultHost),
 		APIKey:                dc.APIKey,
 		client:                request.New(opts...),
-		accountsManager:       account.NewManager(dc, ratelimits["download"], _log),
+		accountsManager:       account.NewManager(dc, lanes.Download, _log),
 		autoExpiresLinksAfter: autoExpiresLinksAfter,
 		logger:                _log,
 		config:                dc,
@@ -573,16 +573,9 @@ func (pm *Premiumize) CheckFile(ctx context.Context, infohash, fileID string) er
 }
 
 func (pm *Premiumize) GetProfile() (*types.Profile, error) {
-	if pm.profile != nil && time.Since(pm.profileLastFetched) < profileCacheDuration {
-		return pm.profile, nil
-	}
-	profile, err := pm.getClientProfile(pm.client)
-	if err != nil {
-		return nil, err
-	}
-	pm.profile = profile
-	pm.profileLastFetched = time.Now()
-	return profile, nil
+	return pm.profile.Get(profileCacheDuration, func() (*types.Profile, error) {
+		return pm.getClientProfile(pm.client)
+	})
 }
 
 func (pm *Premiumize) getClientProfile(client *request.Client) (*types.Profile, error) {

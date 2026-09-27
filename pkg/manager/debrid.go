@@ -1,21 +1,19 @@
 package manager
 
 import (
-	"cmp"
 	"errors"
 	"slices"
 
 	"github.com/sirrobot01/decypharr/internal/config"
-	"github.com/sirrobot01/decypharr/internal/utils"
 	debrid "github.com/sirrobot01/decypharr/pkg/debrid/common"
 	"github.com/sirrobot01/decypharr/pkg/debrid/providers/alldebrid"
 	"github.com/sirrobot01/decypharr/pkg/debrid/providers/debridlink"
 	"github.com/sirrobot01/decypharr/pkg/debrid/providers/premiumize"
 	"github.com/sirrobot01/decypharr/pkg/debrid/providers/realdebrid"
 	"github.com/sirrobot01/decypharr/pkg/debrid/providers/torbox"
+	"github.com/sirrobot01/decypharr/pkg/debrid/throttle"
 	"github.com/sirrobot01/decypharr/pkg/debrid/types"
 	"github.com/sirrobot01/decypharr/pkg/storage"
-	"go.uber.org/ratelimit"
 )
 
 var (
@@ -52,27 +50,18 @@ func (m *Manager) createClient(dc config.Debrid) (debrid.Client, error) {
 	var client debrid.Client
 	var err error
 
-	rateLimits := map[string]ratelimit.Limiter{}
-
-	mainRL := utils.ParseRateLimit(dc.RateLimit)
-	repairRL := utils.ParseRateLimit(cmp.Or(dc.RepairRateLimit, dc.RateLimit))
-	downloadRL := utils.ParseRateLimit(cmp.Or(dc.DownloadRateLimit, dc.RateLimit))
-
-	rateLimits["main"] = mainRL
-	rateLimits["repair"] = repairRL
-	rateLimits["download"] = downloadRL
-
+	// Every call path of the entry shares the budget ForDebrid builds.
 	switch dc.Provider {
 	case "realdebrid":
-		client, err = realdebrid.New(dc, rateLimits)
+		client, err = realdebrid.New(dc, throttle.ForDebrid(dc, m.logger))
 	case "alldebrid":
-		client, err = alldebrid.New(dc, rateLimits)
+		client, err = alldebrid.New(dc, throttle.ForDebrid(dc, m.logger))
 	case "torbox":
-		client, err = torbox.New(dc, rateLimits)
+		client, err = torbox.New(dc, throttle.ForDebrid(dc, m.logger))
 	case "debridlink":
-		client, err = debridlink.New(dc, rateLimits)
+		client, err = debridlink.New(dc, throttle.ForDebrid(dc, m.logger))
 	case "premiumize":
-		client, err = premiumize.New(dc, rateLimits)
+		client, err = premiumize.New(dc, throttle.ForDebrid(dc, m.logger))
 	default:
 		return nil, ErrUnsupportedDebridProvider
 	}

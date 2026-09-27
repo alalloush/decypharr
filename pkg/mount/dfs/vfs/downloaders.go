@@ -13,6 +13,7 @@ import (
 	"github.com/sirrobot01/decypharr/internal/config"
 	"github.com/sirrobot01/decypharr/internal/customerror"
 	"github.com/sirrobot01/decypharr/internal/nntp"
+	"github.com/sirrobot01/decypharr/internal/request"
 	"github.com/sirrobot01/decypharr/pkg/manager"
 	fuseconfig "github.com/sirrobot01/decypharr/pkg/mount/dfs/config"
 	"github.com/sirrobot01/decypharr/pkg/mount/dfs/vfs/ranges"
@@ -756,9 +757,11 @@ func (dls *Downloaders) countErrors(n int64, err error) {
 			return
 		}
 		dls.errorCount++
-		dls.lastErr = err
+		// Classify on err; keep only the redacted form, which still unwraps
+		// to err, so a CDN token never reaches the log or readers of lastErr.
+		dls.lastErr = request.RedactError(err)
 		if !customerror.IsSilentError(err) {
-			dls.item.logger.Debug().Err(err).Int("count", dls.errorCount).Msg("download error")
+			dls.item.logger.Debug().Err(dls.lastErr).Int("count", dls.errorCount).Msg("download error")
 		}
 		// Only a genuinely permanent provider failure (article missing, auth,
 		// payment/permission) fast-trips the breaker — retrying those 10× is

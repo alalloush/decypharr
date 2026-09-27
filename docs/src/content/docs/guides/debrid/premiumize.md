@@ -21,6 +21,6 @@ Premiumize is a supported Debrid provider.
 
 Get your API key from your Premiumize account page.
 
-All configuration options from [Real Debrid](./real-debrid/) apply (rate limits, workers, proxy, etc.).
+All configuration options from [Real Debrid](./real-debrid/) apply (rate limits, proxy, etc.).
 
 See [Configuration Reference](../configuration/#debrid-providers) for full options.

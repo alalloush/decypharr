@@ -57,7 +57,7 @@ type Service struct {
 	entryRefresher   EntryRefresher
 	repairer         EntryRepairer
 	entrySaver       EntrySaver
-	httpClient       *http.Client
+	streamClient     func(debrid string) *http.Client // HTTP client for a debrid's download links
 	retries          int
 	fetchTimeout     time.Duration
 	logger           zerolog.Logger
@@ -69,7 +69,7 @@ func New(
 	entryRefresher EntryRefresher,
 	entryReinsert EntryRepairer,
 	entrySaver EntrySaver,
-	httpClient *http.Client,
+	streamClient func(debrid string) *http.Client,
 	retries int,
 	logger zerolog.Logger,
 ) *Service {
@@ -80,7 +80,7 @@ func New(
 		entryRefresher:   entryRefresher,
 		repairer:         entryReinsert,
 		entrySaver:       entrySaver,
-		httpClient:       httpClient,
+		streamClient:     streamClient,
 		retries:          retries,
 		fetchTimeout:     defaultFetchTimeout,
 		logger:           logger,
@@ -468,7 +468,7 @@ func (s *Service) validateLink(ctx context.Context, link *types.DownloadLink) er
 		)
 	}
 
-	resp, err := s.httpClient.Do(req)
+	resp, err := s.streamClient(link.Debrid).Do(req)
 	if err != nil {
 		return NewRetryableError(
 			fmt.Errorf("HEAD request failed: %w", err),

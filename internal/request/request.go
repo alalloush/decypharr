@@ -106,6 +106,15 @@ func WithProxy(proxyURL string) ClientOption {
 	}
 }
 
+// WithInsecureSkipVerify turns off TLS certificate verification. Clients
+// verify certificates by default; this is only for a provider whose
+// configuration sets insecure_skip_verify.
+func WithInsecureSkipVerify(skip bool) ClientOption {
+	return func(c *Client) {
+		c.skipTLSVerify = skip
+	}
+}
+
 // Do performs an HTTP request with retries for certain status codes
 func (c *Client) Do(req *http.Request) (*http.Response, error) {
 	// Apply headers
@@ -133,7 +142,11 @@ func (c *Client) Do(req *http.Request) (*http.Response, error) {
 		return nil, fmt.Errorf("creating retryable request: %w", err)
 	}
 
-	return c.client.Do(retryReq)
+	resp, err := c.client.Do(retryReq)
+	if err != nil {
+		return nil, nameRequest(err, req)
+	}
+	return resp, nil
 }
 
 // MakeRequest performs an HTTP request and returns the response body as bytes
@@ -199,8 +212,7 @@ func retryAfterBackoff(min, max time.Duration, attemptNum int, resp *http.Respon
 // New creates a new HTTP client with the specified options
 func New(options ...ClientOption) *Client {
 	client := &Client{
-		maxRetries:    5,
-		skipTLSVerify: true,
+		maxRetries: 5,
 		retryableStatus: map[int]struct{}{
 			http.StatusTooManyRequests:     {},
 			http.StatusInternalServerError: {},
@@ -231,6 +243,7 @@ func New(options ...ClientOption) *Client {
 		transport := &http.Transport{
 			TLSClientConfig: &tls.Config{
 				InsecureSkipVerify: client.skipTLSVerify,
+				MinVersion:         tls.VersionTLS12,
 			},
 			DialContext: (&net.Dialer{
 				Timeout:   30 * time.Second,
@@ -259,6 +272,18 @@ func New(options ...ClientOption) *Client {
 	retryClient.RetryWaitMax = 30 * time.Second
 	retryClient.Logger = nil
 	retryClient.Backoff = retryAfterBackoff
+	retryClient.ErrorHandler = giveUp
+	// The provider counts every attempt, so a retry waits for its own permit
+	// like the first attempt does in Do.
+	if limiter := client.rateLimiter; limiter != nil {
+		retryClient.PrepareRetry = func(req *http.Request) error {
+			if err := req.Context().Err(); err != nil {
+				return err
+			}
+			limiter.Take()
+			return nil
+		}
+	}
 
 	// Custom retry policy based on retryable status codes
 	retryClient.CheckRetry = func(ctx context.Context, resp *http.Response, err error) (bool, error) {

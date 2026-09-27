@@ -130,13 +130,15 @@
         },
         "rate_limit": {
           "type": "string",
-          "description": "200/minute or 10/second"
+          "description": "RateLimit caps all of this entry's API calls together (main API,\nrepair and every download key), e.g. 200/minute or 10/second: at most\nthat many start in any minute or second. Real-Debrid stays at or under\n240/minute and TorBox at or under 288/minute per API key whatever it\nsays. Empty means those limits, or 250/minute for other providers."
         },
         "repair_rate_limit": {
-          "type": "string"
+          "type": "string",
+          "description": "RepairRateLimit also caps repair probes, which still count against\nRateLimit."
         },
         "download_rate_limit": {
-          "type": "string"
+          "type": "string",
+          "description": "DownloadRateLimit also caps download-link calls on all download keys\ntogether, and TorBox submissions. They still count against RateLimit."
         },
         "proxy": {
           "type": "string"
@@ -162,9 +164,6 @@
         "download_links_refresh_interval": {
           "type": "string"
         },
-        "workers": {
-          "type": "integer"
-        },
         "auto_expire_links_after": {
           "type": "string"
         },
@@ -182,6 +181,10 @@
         "keep_in_sync": {
           "type": "boolean",
           "description": "KeepInSync adopts completed torrents that are already on this provider\nbut were added outside decypharr (for example through Debrid Media\nManager) as completed downloads in the \"other\" category. Adopted\nentries are served from the mount; nothing is downloaded or linked."
+        },
+        "insecure_skip_verify": {
+          "type": "boolean",
+          "description": "InsecureSkipVerify turns off TLS certificate verification for this\nprovider's API and download (CDN) connections. Certificates are\nverified by default; set this only for a provider whose certificate\ncannot be verified."
         },
         "folder": {
           "type": "string",
@@ -248,10 +251,12 @@
           "type": "boolean"
         },
         "participate": {
-          "type": "boolean"
+          "type": "boolean",
+          "description": "Participate joins the public hearsay P2P network: BitTorrent DHT,\ngossip, and relaying other nodes' data. Off unless set to true (fork\ndefault, audit H4; upstream turns it on)."
         },
         "publish": {
-          "type": "boolean"
+          "type": "boolean",
+          "description": "Publish shares this node's observations while it participates. On\nunless set to false."
         },
         "advice_mode": {
           "type": "string"
@@ -770,6 +775,10 @@
         "backup": {
           "type": "boolean",
           "description": "Backup marks this provider as a fallback tier. Backups are only\nconsulted when every non-backup (\"primary\") provider is excluded\n— e.g. all primaries returned article-not-found or had connection\nerrors. They are not used just because a primary's pool is busy unless\nstream_backup_wait explicitly enables urgent playback spillover. This\nmatches the \"unlimited primary + block backup for completion\" model\nthat most other Usenet clients implement, and prevents block providers\nfrom being billed for articles the unlimited could have served."
+        },
+        "insecure_skip_verify": {
+          "type": "boolean",
+          "description": "InsecureSkipVerify turns off TLS certificate verification for this\nprovider when ssl is on. Certificates are verified by default; set\nthis only for a server whose certificate cannot be verified."
         }
       },
       "type": "object"

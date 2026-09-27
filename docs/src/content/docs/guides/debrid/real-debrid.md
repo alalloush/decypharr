@@ -57,7 +57,7 @@ Rotate between multiple keys for higher throughput:
 
 ### Rate Limiting
 
-Respect Real Debrid's rate limits:
+Real-Debrid allows 250 API requests per minute. Decypharr keeps every Real-Debrid call (API, repair and all download keys, across all Real-Debrid entries) at or under 240 per minute, so `rate_limit` is only needed to go lower. `repair_rate_limit` caps repair probes further; they still count against the shared budget:
 
 ```json
 {
@@ -70,6 +70,8 @@ Respect Real Debrid's rate limits:
   ]
 }
 ```
+
+See [Rate limits](../../configuration/#rate-limits).
 
 ### Proxy Support
 
@@ -138,7 +140,7 @@ Decypharr tries providers in `priority` order, lower first. Without `priority` t
 
 ### Rate Limit Errors
 
-Reduce `rate_limit` or add more `download_api_keys`.
+Decypharr stays under Real-Debrid's documented 250 requests per minute, but other tools using the same account or address (Debrid Media Manager in a browser, another media server) count too. Lower `rate_limit` to leave them room. More `download_api_keys` do not raise the limit: Real-Debrid does not say the limit is per key, so Decypharr shares one budget across all keys.
 
 ### No Free Slots
 

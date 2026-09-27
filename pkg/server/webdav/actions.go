@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 
 	"github.com/sirrobot01/decypharr/internal/customerror"
+	"github.com/sirrobot01/decypharr/internal/request"
 	"github.com/sirrobot01/decypharr/internal/utils"
 	"github.com/sirrobot01/decypharr/pkg/manager"
 )
@@ -106,10 +107,13 @@ func (h *Handler) handleDownload(info *manager.FileInfo, w http.ResponseWriter, 
 }
 
 func (h *Handler) writeStreamError(logKey string, err error, w http.ResponseWriter) {
+	// The error may carry a CDN link with a token; neither the log nor the
+	// WebDAV client may see it.
+	err = request.RedactError(err)
 	var streamErr *customerror.Error
 	if errors.As(err, &streamErr) {
 		if !streamErr.HeadersWritten {
-			http.Error(w, streamErr.Error(), streamErr.StatusCode())
+			http.Error(w, request.RedactError(streamErr).Error(), streamErr.StatusCode())
 		}
 		if !streamErr.IsSilent() {
 			h.logger.Rate(logKey).Error().Err(err).Msgf("Error streaming file: %s", logKey)

@@ -10,7 +10,7 @@ Behaviour as of upstream `beta` 249ac9e plus this fork:
 - Numbers that fail to parse are ignored silently, and the file value stays.
 - Overrides are applied when the config loads, after defaults and on top of `config.json`. They are not applied on the very first start, when `config.json` does not exist yet and is created; they take effect from the next start.
 - Overrides are in-memory, but any later save (settings saved from the web UI, or a load that has to write new signing secrets) writes the overridden values, secrets included, into `config.json`.
-- Defaults run before the overrides. A debrid entry that exists only in the environment therefore misses the per-debrid defaults on that start (`provider` falling back to `name`, `download_api_keys` falling back to `api_key`, `workers`, refresh intervals) until something saves the config.
+- Defaults run before the overrides. A debrid entry that exists only in the environment therefore misses the per-debrid defaults on that start (`provider` falling back to `name`, `download_api_keys` falling back to `api_key`, refresh intervals) until something saves the config.
 
 ## Server and auth
 
@@ -55,6 +55,7 @@ Indexes 0 to 9. The other keys of an index apply only when that index's `NAME` i
 | `DECYPHARR_DEBRIDS__N__API_KEY` | `debrids[N].api_key` | string, secret | |
 | `DECYPHARR_DEBRIDS__N__FOLDER` | `debrids[N].folder` | string | Deprecated field. |
 | `DECYPHARR_DEBRIDS__N__PROXY` | `debrids[N].proxy` | string | HTTP(S) or `socks5://` proxy URL. |
+| `DECYPHARR_DEBRIDS__N__INSECURE_SKIP_VERIFY` | `debrids[N].insecure_skip_verify` | bool | Fork addition (audit H3). Turns off TLS certificate verification for this provider's API and download links. Verified by default. |
 | `DECYPHARR_DEBRIDS__N__API_HOST` | `debrids[N].api_host` | string | Fork addition. API base URL override (scheme, host, version path) for fake providers in tests. Empty keeps the provider's public API. |
 | `DECYPHARR_DEBRIDS__N__PRIORITY` | `debrids[N].priority` | int | Fork addition (#294). Lower is tried first; ties keep config order. `0` means config position (N+1). Ignored when not an integer. |
 | `DECYPHARR_DEBRIDS__N__KEEP_IN_SYNC` | `debrids[N].keep_in_sync` | bool | Fork addition (upstream #275, part a). Adopts finished provider torrents that nothing owns yet as completed downloads in category `other`. |
@@ -143,6 +144,7 @@ Providers use indexes 0 to 9. The other keys of an index apply only when that in
 | `DECYPHARR_USENET__PROVIDERS__N__BACKBONE` | `usenet.providers[N].backbone` | string | |
 | `DECYPHARR_USENET__PROVIDERS__N__MAX_CONNECTIONS` | `usenet.providers[N].max_connections` | int | |
 | `DECYPHARR_USENET__PROVIDERS__N__SSL` | `usenet.providers[N].ssl` | bool | |
+| `DECYPHARR_USENET__PROVIDERS__N__INSECURE_SKIP_VERIFY` | `usenet.providers[N].insecure_skip_verify` | bool | Fork addition (audit H3). Turns off TLS certificate verification for this provider. Verified by default. |
 | `DECYPHARR_USENET__PROVIDERS__N__PRIORITY` | `usenet.providers[N].priority` | int | |
 | `DECYPHARR_USENET__PROVIDERS__N__BACKUP` | `usenet.providers[N].backup` | bool | |
 
@@ -151,8 +153,8 @@ Providers use indexes 0 to 9. The other keys of an index apply only when that in
 | Variable | Config path | Type | Notes |
 |---|---|---|---|
 | `DECYPHARR_HEARSAY__DISABLED` | `hearsay.disabled` | bool | |
-| `DECYPHARR_HEARSAY__PARTICIPATE` | `hearsay.participate` | bool | |
-| `DECYPHARR_HEARSAY__PUBLISH` | `hearsay.publish` | bool | |
+| `DECYPHARR_HEARSAY__PARTICIPATE` | `hearsay.participate` | bool | Joins the public P2P network. Fork default `false` when unset (audit H4); upstream defaults to `true`. |
+| `DECYPHARR_HEARSAY__PUBLISH` | `hearsay.publish` | bool | `true` when unset; only takes effect while participating. |
 | `DECYPHARR_HEARSAY__ADVICE_MODE` | `hearsay.advice_mode` | string | Trimmed and lower-cased. |
 | `DECYPHARR_HEARSAY__MIN_SUPPORT` | `hearsay.min_support` | float | |
 | `DECYPHARR_HEARSAY__MIN_EVIDENCE` | `hearsay.min_evidence` | float | |

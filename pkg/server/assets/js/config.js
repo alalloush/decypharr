@@ -162,7 +162,7 @@ class ConfigManager {
         const $ = (id) => document.getElementById(id);
         const h = hearsay || {};
         if ($('hearsay.enabled')) $('hearsay.enabled').checked = !h.disabled;
-        if ($('hearsay.participate')) $('hearsay.participate').checked = h.participate ?? true;
+        if ($('hearsay.participate')) $('hearsay.participate').checked = h.participate ?? false;
         if ($('hearsay.publish')) $('hearsay.publish').checked = h.publish ?? true;
         if ($('hearsay.advice_mode')) $('hearsay.advice_mode').value = h.advice_mode || 'shadow';
         if ($('hearsay.min_support')) $('hearsay.min_support').value = h.min_support || '';
@@ -181,7 +181,7 @@ class ConfigManager {
         const $ = (id) => document.getElementById(id);
         return {
             disabled: !($('hearsay.enabled')?.checked ?? true),
-            participate: $('hearsay.participate')?.checked ?? true,
+            participate: $('hearsay.participate')?.checked ?? false,
             publish: $('hearsay.publish')?.checked ?? true,
             advice_mode: $('hearsay.advice_mode')?.value || 'shadow',
             min_support: parseFloat($('hearsay.min_support')?.value) || 0,
@@ -840,6 +840,17 @@ class ConfigManager {
                             <div>
                                 <span class="font-medium">Keep In Sync</span>
                                 <div class="label-text-alt">Adopt torrents added elsewhere (e.g. DMM) as "other"</div>
+                            </div>
+                        </label>
+                    </div>
+
+                    <div>
+                        <label class="label cursor-pointer justify-start gap-2">
+                            <input type="checkbox" class="checkbox checkbox-warning"
+                                   name="debrid[${index}].insecure_skip_verify" id="debrid[${index}].insecure_skip_verify">
+                            <div>
+                                <span class="font-medium">Skip TLS Verification</span>
+                                <div class="label-text-alt">Insecure: accept any certificate from this provider's API and download links</div>
                             </div>
                         </label>
                     </div>
@@ -1568,6 +1579,7 @@ class ConfigManager {
             const maxConnectionsInput = getField('max_connections');
             const priorityInput = getField('priority');
             const backupInput = getField('backup');
+            const insecureSkipVerifyInput = getField('insecure_skip_verify');
 
             if (!hostInput || !portInput || !usernameInput || !passwordInput || !backboneInput || !sslInput || !maxConnectionsInput || !priorityInput) {
                 return;
@@ -1585,7 +1597,8 @@ class ConfigManager {
                 // Backup is optional and defaults false — old form versions
                 // (or missing inputs after a hot-reload) shouldn't accidentally
                 // turn a primary into a backup.
-                backup: backupInput ? backupInput.checked : false
+                backup: backupInput ? backupInput.checked : false,
+                insecure_skip_verify: insecureSkipVerifyInput ? insecureSkipVerifyInput.checked : false
             };
 
             if (provider.host && provider.username && provider.password) {
@@ -1630,6 +1643,7 @@ class ConfigManager {
             const downloadUncachedInput = getField('download_uncached');
             const unpackRarInput = getField('unpack_rar');
             const keepInSyncInput = getField('keep_in_sync');
+            const insecureSkipVerifyInput = getField('insecure_skip_verify');
             const addSamplesInput = getField('add_samples');
             const userAgentInput = getField('user_agent');
             const slotStrategyInput = getField('slot_strategy');
@@ -1658,6 +1672,7 @@ class ConfigManager {
                 download_uncached: downloadUncachedInput.checked,
                 unpack_rar: unpackRarInput.checked,
                 keep_in_sync: keepInSyncInput.checked,
+                insecure_skip_verify: insecureSkipVerifyInput ? insecureSkipVerifyInput.checked : false,
                 add_samples: addSamplesInput.checked,
                 user_agent: userAgentInput.value,
                 // Hidden for other providers; a leftover value would fail config validation.
@@ -2609,6 +2624,13 @@ class ConfigManager {
                                name="usenet.providers[${index}].ssl"
                                id="usenet_provider_${index}_ssl">
                         <span class="text-sm">Use SSL</span>
+                    </label>
+                    <label class="flex items-center gap-2 cursor-pointer"
+                           title="Insecure: accept any TLS certificate from this server. Only for a server whose certificate cannot be verified.">
+                        <input type="checkbox" class="checkbox checkbox-warning checkbox-sm"
+                               name="usenet.providers[${index}].insecure_skip_verify"
+                               id="usenet_provider_${index}_insecure_skip_verify">
+                        <span class="text-sm">Skip TLS verification</span>
                     </label>
                     <label class="flex items-center gap-2 cursor-pointer"
                            title="Only used when every non-backup provider is excluded (article not found, connection errors). Not used just because primary pools are busy — requests wait for a primary slot instead. Use this for block providers you only want to bill for completion.">

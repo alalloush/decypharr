@@ -5,7 +5,7 @@ description: Use local and shared availability evidence safely.
 
 Hearsay is an optional hint layer for debrid cache availability and Usenet completeness. Decypharr records outcomes learned from normal adds, imports, and repair work. It never schedules probes to create observations.
 
-Local Hearsay, public network participation, and observation sharing are enabled by default. Advice remains in shadow mode, so shared evidence is measured but does not change download decisions until you explicitly select active mode.
+Local Hearsay is enabled by default and keeps its observations on this machine. Joining the public network is opt-in in this fork: set `participate` to `true` (or `DECYPHARR_HEARSAY__PARTICIPATE=true`) to join. Participating means joining the BitTorrent DHT and the gossip layer, which exposes your IP address on public DHT topics, and relaying up to `max_storage_bytes` of other nodes' data. While participating, observation sharing (`publish`) is on unless you turn it off. Advice remains in shadow mode, so shared evidence is measured but does not change download decisions until you explicitly select active mode.
 
 ## What is recorded
 
@@ -40,8 +40,8 @@ The Hearsay settings page exposes these options:
 | Setting | JSON key | Default |
 |---|---|---|
 | Enable local Hearsay | `disabled` | enabled |
-| Join the public network | `participate` | on |
-| Share observations | `publish` | on |
+| Join the public network | `participate` | off |
+| Share observations | `publish` | on while participating |
 | Advice mode | `advice_mode` | `shadow` |
 | Sharing port | `port` | automatic |
 | Discovery port | `gossip_port` | automatic |
@@ -105,6 +105,10 @@ The identity, observations, metrics, and retained generations live in the `hears
 
 The current integration uses Hearsay `v0.6.3` and the HSY2 protocol. It removes incompatible HSY1 remote generations at startup. It keeps local observations and the long-term identity. Hearsay waits for a valid generation pointer before it advertises a feed.
 
-The old `no_publish` setting is replaced by `publish`. Missing `participate` and `publish` values now default to `true`, matching the standalone daemon. Explicit `false` values remain respected. Set both to `false` for local-only operation, and move from shadow to active mode only after checking measured accuracy.
+The old `no_publish` setting is replaced by `publish`. Upstream Decypharr treats a missing `participate` as `true`, matching the standalone daemon. This fork treats it as `false` (audit H4), so a config written before the change stops participating after the upgrade, and the log says so at startup: `Hearsay public P2P network is off by default in this fork`. An explicit `"participate": true` keeps participating. The settings page used to save the checkbox as checked when the key was missing, so a config saved through it may hold `"participate": true` without anyone having opted in; check the value. A missing `publish` still means `true`. Move from shadow to active mode only after checking measured accuracy.
 
 To turn Hearsay off completely, clear **Enable local Hearsay** or set `"disabled": true`.
+
+## Building without Hearsay
+
+Build with the `nohearsay` tag to leave Hearsay out of the binary: `go build -tags nohearsay`, or `docker build --build-arg BUILD_TAGS=nohearsay`. The engine, the P2P transport (pion DTLS/STUN, gorilla/websocket, libutp) and the SQLite store are not linked, which saves about 11 MB of the 41 MB stripped binary. Every Hearsay setting is then ignored, the Stats page shows Hearsay as disabled, and a warning is logged if `participate` is `true`.

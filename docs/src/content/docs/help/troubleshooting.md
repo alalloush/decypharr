@@ -171,6 +171,10 @@ id your_username
 3. Regenerate API key
 4. Update config and restart
 
+### Certificate errors (`x509: ...`)
+
+Decypharr verifies provider, download and usenet TLS certificates. An `x509` or `certificate` error means the server's certificate is expired, self-signed, issued for another host, or replaced by a TLS-intercepting proxy. Fix the certificate or trust the proxy's CA (`SSL_CERT_FILE`). If you accept the risk for one provider, set `"insecure_skip_verify": true` on it. See [TLS certificate verification](/guides/configuration/#tls-certificate-verification).
+
 ### "No free slots"
 
 **Check slots:**
@@ -202,8 +206,7 @@ Reduce request rate:
 {
   "debrids": [
     {
-      "rate_limit": "100/minute",
-      "workers": 25
+      "rate_limit": "100/minute"
     }
   ]
 }
@@ -241,7 +244,7 @@ telnet news.provider.com 563
 
 - Correct host/port
 - Valid username/password
-- SSL enabled if provider requires
+- SSL enabled if provider requires; a certificate error means the certificate is not trusted or not issued for `host` (see [TLS certificate verification](/guides/configuration/#tls-certificate-verification))
 - Provider account active
 
 ### NZB processing timeout
@@ -353,10 +356,9 @@ docker stats decypharr
 
 **Solutions:**
 
-1. Reduce workers:
+1. Reduce repair workers:
    ```json
    {
-     "debrids": [{"workers": 25}],
      "repair": {"workers": 1, "enabled": false}
    }
    ```

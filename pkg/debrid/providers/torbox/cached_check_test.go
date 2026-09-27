@@ -9,6 +9,7 @@ import (
 	"github.com/sirrobot01/decypharr/internal/config"
 	"github.com/sirrobot01/decypharr/internal/customerror"
 	"github.com/sirrobot01/decypharr/internal/utils"
+	"github.com/sirrobot01/decypharr/pkg/debrid/throttle"
 	"github.com/sirrobot01/decypharr/pkg/debrid/types"
 )
 
@@ -57,10 +58,14 @@ func TestSubmitMagnetSkipsCreateTorrentOnlyWhenKnownUncached(t *testing.T) {
 			wantProbe: true, wantCreateCalled: true,
 		},
 		{
-			name:             "download_uncached: never probe, never refuse",
+			name:             "download_uncached: probe, never refuse under the hourly limit",
 			hash:             testHash,
 			downloadUncached: true,
-			wantProbe:        false, wantCreateCalled: true,
+			checkcached: func(w http.ResponseWriter) {
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(`{"success":true,"data":{}}`))
+			},
+			wantProbe: true, wantCreateCalled: true,
 		},
 		{
 			name:      "empty hash is unknown, not negative",
@@ -113,5 +118,57 @@ func TestSubmitMagnetSkipsCreateTorrentOnlyWhenKnownUncached(t *testing.T) {
 				t.Errorf("SubmitMagnet() error = %v, want nil", err)
 			}
 		})
+	}
+}
+
+// TorBox allows 60 uncached adds per API key every hour. The 61st known
+// uncached add is refused before createtorrent, so it can move on to another
+// debrid; cached adds do not count.
+func TestSubmitMagnetRefusesUncachedAddsOverHourlyLimit(t *testing.T) {
+	config.SetConfigPath(t.TempDir())
+	t.Cleanup(config.Reset)
+
+	var creates int
+	cachedHash := "fedcba9876543210fedcba9876543210fedcba98"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/api/torrents/checkcached":
+			if r.URL.Query().Get("hash") == cachedHash {
+				_, _ = w.Write([]byte(`{"success":true,"data":{"` + cachedHash + `":{"size":123}}}`))
+				return
+			}
+			_, _ = w.Write([]byte(`{"success":true,"data":{}}`))
+		case "/api/torrents/createtorrent":
+			creates++
+			_, _ = w.Write([]byte(`{"success":true,"data":{"torrent_id":1,"hash":"` + testHash + `"}}`))
+		default:
+			w.WriteHeader(http.StatusInternalServerError)
+		}
+	}))
+	t.Cleanup(server.Close)
+
+	tb := testTorbox(server.URL)
+	tb.uncachedAdds = throttle.NewWindow(uncachedAdds)
+	submit := func(hash string) error {
+		_, err := tb.SubmitMagnet(&types.Torrent{
+			InfoHash:         hash,
+			Name:             "some.release",
+			DownloadUncached: true,
+			Magnet:           &utils.Magnet{Link: "magnet:?xt=urn:btih:" + hash},
+		})
+		return err
+	}
+	for i := range uncachedAdds.Count {
+		if err := submit(testHash); err != nil {
+			t.Fatalf("uncached add %d: %v", i+1, err)
+		}
+	}
+	if err := submit(testHash); err == nil || creates != uncachedAdds.Count {
+		t.Fatalf("uncached add %d: error %v, createtorrent calls %d; want a refusal and %d calls",
+			uncachedAdds.Count+1, err, creates, uncachedAdds.Count)
+	}
+	if err := submit(cachedHash); err != nil {
+		t.Fatalf("cached add after the uncached limit: %v", err)
 	}
 }

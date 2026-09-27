@@ -20,8 +20,8 @@ import (
 	"github.com/sirrobot01/decypharr/internal/request"
 	"github.com/sirrobot01/decypharr/internal/utils"
 	"github.com/sirrobot01/decypharr/pkg/debrid/account"
+	"github.com/sirrobot01/decypharr/pkg/debrid/throttle"
 	"github.com/sirrobot01/decypharr/pkg/debrid/types"
-	"go.uber.org/ratelimit"
 )
 
 const (
@@ -33,6 +33,8 @@ const (
 	// against the API (the documented 1000 is not enforced). remove_oldest
 	// uses it when `limit` is unset; a larger `limit` is clamped down to it.
 	maxTorrentLimit = 5000
+
+	profileCacheDuration = time.Hour
 )
 
 type AllDebrid struct {
@@ -43,12 +45,12 @@ type AllDebrid struct {
 	statusRetryBackoff    []time.Duration
 	client                *request.Client
 	repairClient          *request.Client
-	Profile               *types.Profile `json:"profile"`
+	profile               types.ProfileCache
 	logger                zerolog.Logger
 	config                config.Debrid
 }
 
-func New(dc config.Debrid, ratelimits map[string]ratelimit.Limiter) (*AllDebrid, error) {
+func New(dc config.Debrid, lanes throttle.Lanes) (*AllDebrid, error) {
 	cfg := config.Get()
 	headers := map[string]string{
 		"Authorization": fmt.Sprintf("Bearer %s", dc.APIKey),
@@ -60,18 +62,20 @@ func New(dc config.Debrid, ratelimits map[string]ratelimit.Limiter) (*AllDebrid,
 
 	opts := []request.ClientOption{
 		request.WithHeaders(headers),
-		request.WithRateLimiter(ratelimits["main"]),
+		request.WithRateLimiter(lanes.API),
 		request.WithMaxRetries(cfg.Retries),
 		request.WithRetryableStatus(http.StatusTooManyRequests, http.StatusBadGateway),
+		request.WithInsecureSkipVerify(dc.InsecureSkipVerify),
 	}
 	if dc.Proxy != "" {
 		opts = append(opts, request.WithProxy(dc.Proxy))
 	}
 	repairOpts := []request.ClientOption{
 		request.WithHeaders(headers),
-		request.WithRateLimiter(ratelimits["repair"]),
+		request.WithRateLimiter(lanes.Repair),
 		request.WithMaxRetries(4),
 		request.WithRetryableStatus(http.StatusTooManyRequests),
+		request.WithInsecureSkipVerify(dc.InsecureSkipVerify),
 	}
 	if dc.Proxy != "" {
 		repairOpts = append(repairOpts, request.WithProxy(dc.Proxy))
@@ -84,7 +88,7 @@ func New(dc config.Debrid, ratelimits map[string]ratelimit.Limiter) (*AllDebrid,
 	ad := &AllDebrid{
 		Host:                  dc.APIBaseURL(defaultHost),
 		APIKey:                dc.APIKey,
-		accountsManager:       account.NewManager(dc, ratelimits["download"], _log),
+		accountsManager:       account.NewManager(dc, lanes.Download, _log),
 		autoExpiresLinksAfter: autoExpiresLinksAfter,
 		statusRetryBackoff:    defaultStatusRetryBackoff(),
 		client:                request.New(opts...),
@@ -728,9 +732,10 @@ func (ad *AllDebrid) enforceSlotLimit() error {
 }
 
 func (ad *AllDebrid) GetProfile() (*types.Profile, error) {
-	if ad.Profile != nil {
-		return ad.Profile, nil
-	}
+	return ad.profile.Get(profileCacheDuration, ad.fetchProfile)
+}
+
+func (ad *AllDebrid) fetchProfile() (*types.Profile, error) {
 	var res UserProfileResponse
 
 	resp, err := ad.doRequest(context.Background(), ad.client, "/user", nil, &res)
@@ -767,7 +772,6 @@ func (ad *AllDebrid) GetProfile() (*types.Profile, error) {
 	} else {
 		profile.Type = "free"
 	}
-	ad.Profile = profile
 	return profile, nil
 }
 

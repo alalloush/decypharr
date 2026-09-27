@@ -105,7 +105,7 @@ func TestGetTorrentsBypassesTorboxCache(t *testing.T) {
 	t.Cleanup(server.Close)
 
 	tb := testTorbox(server.URL)
-	tb.Profile = &types.Profile{Type: usenetPlan} // the usenet listing must bypass the cache too
+	seedProfile(t, tb, &types.Profile{Type: usenetPlan}) // the usenet listing must bypass the cache too
 	torrents, err := tb.GetTorrents()
 	if err != nil {
 		t.Fatalf("GetTorrents() error = %v", err)
@@ -205,6 +205,14 @@ func testTorbox(host string) *Torbox {
 		client: request.New(request.WithMaxRetries(0)),
 		logger: zerolog.Nop(),
 		config: config.Debrid{Name: "torbox"},
+	}
+}
+
+// seedProfile fills the profile cache as a successful /user/me would.
+func seedProfile(t *testing.T, tb *Torbox, profile *types.Profile) {
+	t.Helper()
+	if _, err := tb.profile.Get(profileCacheDuration, func() (*types.Profile, error) { return profile, nil }); err != nil {
+		t.Fatal(err)
 	}
 }
 

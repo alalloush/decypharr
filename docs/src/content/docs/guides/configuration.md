@@ -92,7 +92,6 @@ Array of Debrid services:
       "api_key": "YOUR_API_KEY",
       "download_uncached": false,
       "rate_limit": "200/minute",
-      "workers": 50,
       "minimum_free_slot": 0,
       "priority": 1,
       "limit": 100,
@@ -115,15 +114,15 @@ Array of Debrid services:
 | `api_key`                         | string | API key from provider dashboard                                                | **Required**                    |
 | `download_api_keys`               | array  | Additional keys for download rotation                                          | `[api_key]`                     |
 | `download_uncached`               | bool   | Download torrents not in provider cache                                        | `false`                         |
-| `rate_limit`                      | string | API rate limit (`200/minute`, `10/second`)                                     | `200/minute`                    |
-| `repair_rate_limit`               | string | Separate limit for repair operations                                           | Same as `rate_limit`            |
-| `download_rate_limit`             | string | Separate limit for downloads                                                   | Same as `rate_limit`            |
+| `rate_limit`                      | string | Most API requests this provider entry may start in any second, minute, hour or day (`200/minute`, `10/second`), shared by all of its call paths. See [Rate limits](#rate-limits) | Real-Debrid `240/minute`, TorBox `288/minute` per API key, others `250/minute` |
+| `repair_rate_limit`               | string | Extra limit on repair probes, which also count against `rate_limit`            | None                            |
+| `download_rate_limit`             | string | Extra limit on download-link requests of all download keys together (and TorBox submissions), which also count against `rate_limit` | None |
 | `proxy`                           | string | HTTP(S) proxy URL                                                              | `""`                            |
+| `insecure_skip_verify`            | bool   | Turn off TLS certificate verification for this provider's API and download links. See [TLS certificate verification](#tls-certificate-verification) | `false` |
 | `unpack_rar`                      | bool   | Auto-extract RAR archives                                                      | `true`                          |
 | `minimum_free_slot`               | int    | Minimum free torrent slots to use this provider                                | `0`                             |
 | `priority`                        | int    | Submission order: lower values are tried first, ties keep config order. `0` or unset means the provider's position in the list (1, 2, …) | Config position                 |
 | `limit`                           | int    | Max torrents allowed on this provider                                          | `0` (unlimited)                 |
-| `workers`                         | int    | Concurrent API workers                                                         | Auto (CPU * 50 / num_providers) |
 | `torrents_refresh_interval`       | string | How often to refresh torrent list                                              | `5m`                            |
 | `download_links_refresh_interval` | string | How often to refresh download links                                            | `10m`                           |
 | `auto_expire_links_after`         | string | Auto-remove links after duration                                               | `24h`                           |
@@ -131,6 +130,18 @@ Array of Debrid services:
 | `slot_strategy`                   | string | Slot management strategy for AllDebrid: `remove_after_add` or `remove_oldest`  | `""` (disabled)                 |
 | `api_host`                        | string | API base URL override (scheme, host and version path) for fake/test providers. Not shown in the web UI; saving settings there drops it | Provider's public API |
 | `keep_in_sync`                    | bool   | Adopt finished torrents added outside Decypharr (for example with Debrid Media Manager) as completed downloads in category `other`. See [Torrents added outside Decypharr](#torrents-added-outside-decypharr) | `false` |
+
+### Rate limits
+
+Every API request a provider entry makes counts against one budget: listing and refreshing torrents, submissions, repair probes, and download-link requests on every download key. The budget is `rate_limit`: at most that many requests start in any window of the unit, including the burst of a tenth of it that is allowed after a quiet spell. Retries count too; each attempt waits for its own turn.
+
+Real-Debrid documents 250 requests per minute and TorBox 300 per minute per API key. Decypharr keeps Real-Debrid at or under 240 per minute and TorBox at or under 288 per minute per key, whatever `rate_limit` says: a higher value is logged and lowered, a lower value applies as set. Real-Debrid does not say whether its limit is per key or per address, so all Real-Debrid entries and download keys in one Decypharr share the 240. TorBox counts each API key separately. TorBox also allows only 60 uncached torrent adds per key every hour; with `download_uncached` on, Decypharr refuses the next uncached add until the hour allows it, so the add can go to another provider.
+
+Listing, info and repair calls on their own use at most four fifths of the budget. The rest stays free for download-link requests, so a large refresh does not hold up the start of a stream.
+
+At startup each entry logs its budget: `API rate limit shared by API, repair and download-key calls budget=240/minute`.
+
+Before this fork, `rate_limit`, `repair_rate_limit` and `download_rate_limit` each built a separate limiter, so an entry could send up to three times `rate_limit` (plus a tenth for bursts), and an entry without `rate_limit` was not limited at all.
 
 ### Torrents added outside Decypharr
 
@@ -146,6 +157,13 @@ With `keep_in_sync` on, each torrent refresh adopts the finished torrents of tha
 - When the torrent is gone from every provider, its adopted download is removed.
 - On TorBox Pro, finished usenet downloads are adopted too, since they are listed like torrents.
 - Changing the setting restarts Decypharr.
+
+### TLS certificate verification
+
+Decypharr verifies the TLS certificate of every provider API, download (CDN) link and usenet server, and of Arr and rclone endpoints. Earlier versions skipped this check on provider, download and usenet connections, so a certificate that is expired, self-signed or issued for another host now fails the connection with an `x509` certificate error. The start-up log carries a one-line notice about this.
+
+- To turn verification off for one provider whose certificate cannot be verified, set `"insecure_skip_verify": true` on that debrid (or `DECYPHARR_DEBRIDS__N__INSECURE_SKIP_VERIFY=true`) or usenet provider (`DECYPHARR_USENET__PROVIDERS__N__INSECURE_SKIP_VERIFY=true`). The settings page has a **Skip TLS Verification** checkbox for both. Each provider with verification off gets a warning in the start-up log.
+- For an Arr or rclone endpoint signed by a private CA, add the CA to the container's trust store, or set `SSL_CERT_FILE` to a PEM bundle that includes it.
 
 ## Usenet
 

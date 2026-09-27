@@ -40,6 +40,10 @@ type UsenetProvider struct {
 	// that most other Usenet clients implement, and prevents block providers
 	// from being billed for articles the unlimited could have served.
 	Backup bool `json:"backup,omitempty"`
+	// InsecureSkipVerify turns off TLS certificate verification for this
+	// provider when ssl is on. Certificates are verified by default; set
+	// this only for a server whose certificate cannot be verified.
+	InsecureSkipVerify bool `json:"insecure_skip_verify,omitempty"`
 }
 
 // ID returns the canonical identity of a provider: host, port, and account.
@@ -296,6 +300,9 @@ func (c *Config) applyUsenetEnvVars() {
 			}
 			if ssl := getEnv(prefix + "SSL"); ssl != "" {
 				c.Usenet.Providers[i].SSL = parseBool(ssl)
+			}
+			if insecure := getEnv(prefix + "INSECURE_SKIP_VERIFY"); insecure != "" {
+				c.Usenet.Providers[i].InsecureSkipVerify = parseBool(insecure)
 			}
 
 			if priority := getEnv(prefix + "PRIORITY"); priority != "" {

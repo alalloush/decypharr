@@ -19,11 +19,14 @@ import (
 	"github.com/sirrobot01/decypharr/internal/request"
 	"github.com/sirrobot01/decypharr/internal/utils"
 	"github.com/sirrobot01/decypharr/pkg/debrid/account"
+	"github.com/sirrobot01/decypharr/pkg/debrid/throttle"
 	"github.com/sirrobot01/decypharr/pkg/debrid/types"
-	"go.uber.org/ratelimit"
 )
 
-const defaultHost = "https://debrid-link.com/api/v2"
+const (
+	defaultHost          = "https://debrid-link.com/api/v2"
+	profileCacheDuration = time.Hour
+)
 
 type DebridLink struct {
 	Host             string `json:"host"`
@@ -37,10 +40,10 @@ type DebridLink struct {
 	logger                zerolog.Logger
 	config                config.Debrid
 
-	Profile *types.Profile `json:"profile,omitempty"`
+	profile types.ProfileCache
 }
 
-func New(dc config.Debrid, ratelimits map[string]ratelimit.Limiter) (*DebridLink, error) {
+func New(dc config.Debrid, lanes throttle.Lanes) (*DebridLink, error) {
 	cfg := config.Get()
 	headers := map[string]string{
 		"Authorization": fmt.Sprintf("Bearer %s", dc.APIKey),
@@ -53,18 +56,20 @@ func New(dc config.Debrid, ratelimits map[string]ratelimit.Limiter) (*DebridLink
 
 	opts := []request.ClientOption{
 		request.WithHeaders(headers),
-		request.WithRateLimiter(ratelimits["main"]),
+		request.WithRateLimiter(lanes.API),
 		request.WithMaxRetries(cfg.Retries),
 		request.WithRetryableStatus(http.StatusTooManyRequests, http.StatusBadGateway),
+		request.WithInsecureSkipVerify(dc.InsecureSkipVerify),
 	}
 	if dc.Proxy != "" {
 		opts = append(opts, request.WithProxy(dc.Proxy))
 	}
 	repairOpts := []request.ClientOption{
 		request.WithHeaders(headers),
-		request.WithRateLimiter(ratelimits["repair"]),
+		request.WithRateLimiter(lanes.Repair),
 		request.WithMaxRetries(4),
 		request.WithRetryableStatus(http.StatusTooManyRequests),
+		request.WithInsecureSkipVerify(dc.InsecureSkipVerify),
 	}
 	if dc.Proxy != "" {
 		repairOpts = append(repairOpts, request.WithProxy(dc.Proxy))
@@ -77,7 +82,7 @@ func New(dc config.Debrid, ratelimits map[string]ratelimit.Limiter) (*DebridLink
 	dbl := &DebridLink{
 		Host:                  dc.APIBaseURL(defaultHost),
 		APIKey:                dc.APIKey,
-		accountsManager:       account.NewManager(dc, ratelimits["download"], log),
+		accountsManager:       account.NewManager(dc, lanes.Download, log),
 		DownloadUncached:      dc.DownloadUncached,
 		autoExpiresLinksAfter: autoExpiresLinksAfter,
 		client:                request.New(opts...),
@@ -631,9 +636,10 @@ func (dl *DebridLink) GetAvailableSlots() (int, error) {
 }
 
 func (dl *DebridLink) GetProfile() (*types.Profile, error) {
-	if dl.Profile != nil {
-		return dl.Profile, nil
-	}
+	return dl.profile.Get(profileCacheDuration, dl.fetchProfile)
+}
+
+func (dl *DebridLink) fetchProfile() (*types.Profile, error) {
 	var res UserInfo
 
 	resp, err := dl.doGet("/account/infos", nil, &res)
@@ -666,7 +672,6 @@ func (dl *DebridLink) GetProfile() (*types.Profile, error) {
 	} else {
 		profile.Type = "free"
 	}
-	dl.Profile = profile
 	return profile, nil
 }
 

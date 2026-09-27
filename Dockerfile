@@ -9,6 +9,8 @@ ARG TARGETARCH
 ARG TARGETPLATFORM
 ARG VERSION=0.0.0
 ARG CHANNEL=dev
+# Go build tags, e.g. nohearsay to leave the Hearsay P2P engine out.
+ARG BUILD_TAGS=""
 
 # Copy xx scripts for cross-compilation
 COPY --from=xx / /
@@ -31,7 +33,7 @@ COPY . .
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
     CGO_ENABLED=1 \
-    xx-go build -trimpath \
+    xx-go build -trimpath -tags="${BUILD_TAGS}" \
     -ldflags="-w -s -X github.com/sirrobot01/decypharr/pkg/version.Version=${VERSION} -X github.com/sirrobot01/decypharr/pkg/version.Channel=${CHANNEL}" \
     -o /decypharr && \
     xx-verify /decypharr

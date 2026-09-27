@@ -18,8 +18,8 @@ import (
 	"github.com/sirrobot01/decypharr/internal/utils"
 	"github.com/sirrobot01/decypharr/pkg/debrid/account"
 	"github.com/sirrobot01/decypharr/pkg/debrid/common/rar"
+	"github.com/sirrobot01/decypharr/pkg/debrid/throttle"
 	"github.com/sirrobot01/decypharr/pkg/debrid/types"
-	"go.uber.org/ratelimit"
 
 	"github.com/rs/zerolog"
 	"github.com/sirrobot01/decypharr/internal/config"
@@ -41,14 +41,13 @@ type RealDebrid struct {
 	autoExpiresLinksAfter time.Duration
 	logger                zerolog.Logger
 
-	rarSemaphore       chan struct{}
-	Profile            *types.Profile
-	profileLastFetched time.Time
-	config             config.Debrid
-	retries            int
+	rarSemaphore chan struct{}
+	profile      types.ProfileCache
+	config       config.Debrid
+	retries      int
 }
 
-func New(dc config.Debrid, ratelimits map[string]ratelimit.Limiter) (*RealDebrid, error) {
+func New(dc config.Debrid, lanes throttle.Lanes) (*RealDebrid, error) {
 	headers := map[string]string{
 		"Authorization": fmt.Sprintf("Bearer %s", dc.APIKey),
 	}
@@ -67,9 +66,10 @@ func New(dc config.Debrid, ratelimits map[string]ratelimit.Limiter) (*RealDebrid
 	opts := []request.ClientOption{
 		request.WithHeaders(headers),
 		request.WithMaxRetries(cfg.Retries),
-		request.WithRateLimiter(ratelimits["main"]),
+		request.WithRateLimiter(lanes.API),
 		request.WithRetryableStatus(http.StatusTooManyRequests),
 		request.WithProxy(dc.Proxy),
+		request.WithInsecureSkipVerify(dc.InsecureSkipVerify),
 	}
 
 	repairOpts := []request.ClientOption{
@@ -77,14 +77,15 @@ func New(dc config.Debrid, ratelimits map[string]ratelimit.Limiter) (*RealDebrid
 		request.WithLogger(_log),
 		request.WithMaxRetries(4),
 		request.WithRetryableStatus(429),
-		request.WithRateLimiter(ratelimits["repair"]),
+		request.WithRateLimiter(lanes.Repair),
 		request.WithProxy(dc.Proxy),
+		request.WithInsecureSkipVerify(dc.InsecureSkipVerify),
 	}
 
 	r := &RealDebrid{
 		Host:                  dc.APIBaseURL(defaultHost),
 		APIKey:                dc.APIKey,
-		accountsManager:       account.NewManager(dc, ratelimits["download"], _log),
+		accountsManager:       account.NewManager(dc, lanes.Download, _log),
 		autoExpiresLinksAfter: autoExpiresLinksAfter,
 		client:                request.New(opts...),
 		repairClient:          request.New(repairOpts...),
@@ -95,8 +96,7 @@ func New(dc config.Debrid, ratelimits map[string]ratelimit.Limiter) (*RealDebrid
 	}
 
 	go func() {
-		_, err = r.GetProfile()
-		if err != nil {
+		if _, err := r.GetProfile(); err != nil {
 			r.logger.Error().Err(err).Msg("Failed to get RealDebrid profile")
 		}
 	}()
@@ -957,16 +957,9 @@ func (r *RealDebrid) getClientProfile(client *request.Client) (*types.Profile, e
 }
 
 func (r *RealDebrid) GetProfile() (*types.Profile, error) {
-	if r.Profile != nil && time.Since(r.profileLastFetched) < profileCacheDuration {
-		return r.Profile, nil
-	}
-	profile, err := r.getClientProfile(r.client)
-	if err != nil {
-		return nil, err
-	}
-	r.Profile = profile
-	r.profileLastFetched = time.Now()
-	return profile, nil
+	return r.profile.Get(profileCacheDuration, func() (*types.Profile, error) {
+		return r.getClientProfile(r.client)
+	})
 }
 
 func (r *RealDebrid) GetAvailableSlots() (int, error) {
