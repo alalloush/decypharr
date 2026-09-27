@@ -15,8 +15,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sirrobot01/decypharr/internal/customerror"
 	"github.com/sirrobot01/decypharr/pkg/debrid/types"
 	"github.com/sirrobot01/decypharr/pkg/manager/link"
+	"github.com/sirrobot01/decypharr/pkg/storage"
 	"github.com/sirrobot01/decypharr/pkg/usenet"
 )
 
@@ -524,6 +526,37 @@ func TestRetentionForOwner(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			if got := retentionForOwner(test.owner); got != test.want {
 				t.Fatalf("retentionForOwner(%d)=%d, want %d", test.owner, got, test.want)
+			}
+		})
+	}
+}
+
+// Opening a session fails the same way on every attempt when the entry does
+// not describe the file. The DFS downloader must see that as permanent. It used
+// to be recognised only from the words "not found" in the message.
+func TestOpenSessionRejectionsArePermanent(t *testing.T) {
+	entry := &storage.Entry{
+		Name: "Release",
+		Files: map[string]*storage.File{
+			"empty.mkv": {Name: "empty.mkv"},
+			"movie.mkv": {Name: "movie.mkv", Size: 1 << 20},
+		},
+	}
+	for name, tc := range map[string]struct {
+		file   string
+		offset int64
+	}{
+		"missing file":    {"missing.mkv", 0},
+		"empty file":      {"empty.mkv", 0},
+		"offset past end": {"movie.mkv", 1<<20 + 1},
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, _, _, err := (&Manager{}).openSession(t.Context(), entry, tc.file, tc.offset, RewindOwnerDownstream)
+			if err == nil {
+				t.Fatal("openSession() succeeded")
+			}
+			if !customerror.IsPermanentError(err) || customerror.IsRetriableError(err) {
+				t.Fatalf("openSession() error %v is not classified permanent", err)
 			}
 		})
 	}

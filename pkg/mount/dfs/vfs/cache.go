@@ -1031,24 +1031,36 @@ type CacheItem struct {
 	metaFlushCh chan struct{}
 	metaStopCh  chan struct{}
 	metaWG      sync.WaitGroup
+	// metaRetired is set while the writer is parked because the item had no
+	// open handle and nothing to flush; markMetadataDirty starts it again.
+	// Guarded by metaStateMu.
+	metaRetired bool
 
 	closeOnce sync.Once
 	closeErr  error
 }
 
 func (item *CacheItem) startMetaWriter() {
+	item.metaStateMu.Lock()
+	item.startMetaWriterLocked()
+	item.metaStateMu.Unlock()
+}
+
+// startMetaWriterLocked starts the writer goroutine. Caller holds metaStateMu.
+func (item *CacheItem) startMetaWriterLocked() {
 	flushCh := make(chan struct{}, 1)
 	stopCh := make(chan struct{})
-	item.metaStateMu.Lock()
 	item.metaFlushCh = flushCh
 	item.metaStopCh = stopCh
+	item.metaRetired = false
 	item.metaWG.Add(1)
-	item.metaStateMu.Unlock()
 	go item.metaWriterLoop(flushCh, stopCh)
 }
 
 func (item *CacheItem) stopMetaWriter() {
 	item.metaStateMu.Lock()
+	// A stopped writer never restarts: Close is closing the buffer under it.
+	item.metaRetired = false
 	stopCh := item.metaStopCh
 	if stopCh == nil {
 		item.metaStateMu.Unlock()
@@ -1071,6 +1083,9 @@ func (item *CacheItem) metaWriterLoop(flushCh <-chan struct{}, stopCh <-chan str
 		case <-ticker.C:
 			item.flushMetadata(false)
 			lastFlush = time.Now()
+			if item.retireIdleMetaWriter(stopCh) {
+				return
+			}
 		case <-flushCh:
 			// The signal fires per write; debounce the flush. The dirty
 			// flag stays set, so the ticker picks up whatever the debounce
@@ -1087,6 +1102,29 @@ func (item *CacheItem) metaWriterLoop(flushCh <-chan struct{}, stopCh <-chan str
 	}
 }
 
+// retireIdleMetaWriter parks the writer once no handle has the item open and
+// everything is flushed. Released items stay in the cache until the janitor
+// closes them, minutes later, and a library scan releases thousands. Each would
+// otherwise keep a goroutine and a ticker for that long. markMetadataDirty
+// starts the writer again when the item changes.
+func (item *CacheItem) retireIdleMetaWriter(stopCh <-chan struct{}) bool {
+	if item.opens.Load() != 0 || item.metaDirty.Load() {
+		return false
+	}
+	item.metaStateMu.Lock()
+	defer item.metaStateMu.Unlock()
+	// markMetadataDirty signals under the read lock, so a change after this
+	// check finds the writer retired and restarts it. A stopMetaWriter that
+	// got here first has already detached stopCh.
+	if item.metaStopCh != stopCh || item.opens.Load() != 0 || item.metaDirty.Load() {
+		return false
+	}
+	item.metaFlushCh = nil
+	item.metaStopCh = nil
+	item.metaRetired = true
+	return true
+}
+
 func (item *CacheItem) markMetadataDirty() {
 	item.metaDirty.Store(true)
 	item.metaStateMu.RLock()
@@ -1096,7 +1134,15 @@ func (item *CacheItem) markMetadataDirty() {
 		default:
 		}
 	}
+	retired := item.metaRetired
 	item.metaStateMu.RUnlock()
+	if retired {
+		item.metaStateMu.Lock()
+		if item.metaRetired {
+			item.startMetaWriterLocked()
+		}
+		item.metaStateMu.Unlock()
+	}
 }
 
 func (item *CacheItem) flushMetadata(force bool) {

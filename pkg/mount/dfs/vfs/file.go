@@ -2,6 +2,8 @@ package vfs
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"io"
 	"io/fs"
 	"sync/atomic"
@@ -36,6 +38,10 @@ func (f *StreamingFile) ReadAt(p []byte, off int64) (int, error) {
 
 // ReadAtContext reads from the file, passing ctx into the download layer so
 // the operation can be interrupted by a read timeout or client disconnect.
+//
+// It returns io.EOF only when off is at or past the end of the file. A read
+// that stops short of the file's end reports io.ErrUnexpectedEOF: FUSE takes
+// a short successful read for the end of the file.
 func (f *StreamingFile) ReadAtContext(ctx context.Context, p []byte, off int64) (int, error) {
 	if f.closed.Load() {
 		return 0, fs.ErrClosed
@@ -57,9 +63,9 @@ func (f *StreamingFile) ReadAtContext(ctx context.Context, p []byte, off int64) 
 	}
 
 	n, err := f.item.ReadAtContext(ctx, p, off)
-
-	if n < int(readSize) && err == nil {
-		err = io.EOF
+	if n < int(readSize) && (err == nil || errors.Is(err, io.EOF)) {
+		// readSize already stops at the end of the file.
+		err = fmt.Errorf("short read at %d: %d of %d bytes: %w", off, n, readSize, io.ErrUnexpectedEOF)
 	}
 	return n, err
 }
