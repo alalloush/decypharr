@@ -136,7 +136,7 @@ Fixes for the findings in `research/audit.md`. Every fix has a test that fails w
 | L7 | The session cookie is `Secure` behind HTTPS or `X-Forwarded-Proto: https`. | |
 | L8 | IPv6 bind addresses work. | |
 | #191 | URL-base-aware redirects (upstream PR, adapted). | |
-| qBit | `hashes` split on `|`; addTags/removeTags without hashes → 400. | |
+| qBit | `hashes` split on `\|`; addTags/removeTags without hashes → 400. | |
 
 Deferred: L10/L11 (refresh invalidation and cancellation); plans are in the DfsFix report and `research/audit.md`.
 
