@@ -142,7 +142,11 @@ func (c *Client) Do(req *http.Request) (*http.Response, error) {
 		return nil, fmt.Errorf("creating retryable request: %w", err)
 	}
 
-	return c.client.Do(retryReq)
+	resp, err := c.client.Do(retryReq)
+	if err != nil {
+		return nil, nameRequest(err, req)
+	}
+	return resp, nil
 }
 
 // MakeRequest performs an HTTP request and returns the response body as bytes
@@ -268,6 +272,7 @@ func New(options ...ClientOption) *Client {
 	retryClient.RetryWaitMax = 30 * time.Second
 	retryClient.Logger = nil
 	retryClient.Backoff = retryAfterBackoff
+	retryClient.ErrorHandler = giveUp
 
 	// Custom retry policy based on retryable status codes
 	retryClient.CheckRetry = func(ctx context.Context, resp *http.Response, err error) (bool, error) {
