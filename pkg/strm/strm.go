@@ -13,6 +13,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"net"
 	"net/url"
 	"path/filepath"
 	"strings"
@@ -40,10 +41,10 @@ func BaseURL(cfg *config.Config) string {
 	base := strings.TrimSuffix(cfg.AppURL, "/")
 	if base == "" {
 		host := cfg.BindAddress
-		if host == "" || host == "0.0.0.0" {
+		if host == "" || net.ParseIP(host).IsUnspecified() {
 			host = "localhost"
 		}
-		base = fmt.Sprintf("http://%s:%s", host, cfg.Port)
+		base = "http://" + net.JoinHostPort(host, cfg.Port)
 	}
 	if ub := strings.Trim(cfg.URLBase, "/"); ub != "" && !strings.HasSuffix(base, "/"+ub) {
 		base += "/" + ub

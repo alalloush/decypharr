@@ -52,6 +52,54 @@ func TestStartFailsWhenThePortIsTaken(t *testing.T) {
 	}
 }
 
+// The listen address was built as "%s:%s", which for an IPv6 bind address is
+// "::1:8282", not an address.
+func TestStartListensOnAnIPv6Address(t *testing.T) {
+	probe, err := net.Listen("tcp", "[::1]:0")
+	if err != nil {
+		t.Skipf("no IPv6 loopback: %v", err)
+	}
+	_, port, _ := net.SplitHostPort(probe.Addr().String())
+	_ = probe.Close()
+	s := newListeningServer(t, "::1", port)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	result := make(chan error, 1)
+	go func() { result <- s.Start(ctx) }()
+
+	url := "http://[::1]:" + port + "/version"
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		select {
+		case err := <-result:
+			t.Fatalf("Start on [::1]:%s = %v", port, err)
+		default:
+		}
+		response, err := http.Get(url)
+		if err == nil {
+			_ = response.Body.Close()
+			if response.StatusCode != http.StatusOK {
+				t.Fatalf("GET %s = %d", url, response.StatusCode)
+			}
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("GET %s: %v", url, err)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+
+	// Let the first stats snapshot finish before the manager is stopped.
+	for s.stats.Snapshot() == nil {
+		time.Sleep(10 * time.Millisecond)
+	}
+	cancel()
+	if err := <-result; err != nil {
+		t.Fatalf("Start after shutdown = %v", err)
+	}
+}
+
 // expectClosed fails unless the server closes conn within limit.
 func expectClosed(t *testing.T, conn net.Conn, limit time.Duration) {
 	t.Helper()

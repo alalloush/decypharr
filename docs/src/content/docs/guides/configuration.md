@@ -19,7 +19,7 @@ Configuration is stored in `config.json`. Most settings can be managed via the W
 
 | Field          | Type   | Description                                      | Default       |
 |----------------|--------|--------------------------------------------------|---------------|
-| `bind_address` | string | IP to bind to                                    | `0.0.0.0`     |
+| `bind_address` | string | IP to bind to (IPv6 without brackets: `::1`)     | `0.0.0.0`     |
 | `port`         | string | Port to listen on                                | `8282`        |
 | `url_base`     | string | Base path for reverse proxy                      | `""`          |
 | `app_url`      | string | External URL for callbacks                       | Auto-detected |

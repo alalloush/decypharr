@@ -228,7 +228,7 @@ func (s *Server) Restart() {
 func (s *Server) Start(ctx context.Context) error {
 	cfg := config.Get()
 
-	addr := fmt.Sprintf("%s:%s", cfg.BindAddress, cfg.Port)
+	addr := net.JoinHostPort(cfg.BindAddress, cfg.Port)
 	listener, err := net.Listen("tcp", addr)
 	if err != nil {
 		return fmt.Errorf("HTTP server cannot listen on %s: %w", addr, err)

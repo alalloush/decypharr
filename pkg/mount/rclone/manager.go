@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"net/url"
 	"os"
 	"os/exec"
@@ -84,7 +85,7 @@ func NewManager(manager *manager.Manager) *Manager {
 		bindAddress = "localhost"
 	}
 
-	baseUrl := fmt.Sprintf("http://%s:%s", bindAddress, mainCfg.Port)
+	baseUrl := "http://" + net.JoinHostPort(bindAddress, mainCfg.Port)
 	webdavUrl, err := url.JoinPath(baseUrl, mainCfg.URLBase, "webdav")
 	if err != nil {
 		return nil
