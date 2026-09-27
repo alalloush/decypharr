@@ -78,6 +78,46 @@ func TestMetadataFlushDebounce(t *testing.T) {
 	}
 }
 
+// A released item stays cached until the janitor closes it, minutes later. Its
+// metadata writer must park once everything is flushed rather than tick for
+// all that time; a scan releases thousands of items. A later write starts the
+// writer again and still reaches the metadata file.
+func TestMetaWriterParksWhenReleasedAndFlushed(t *testing.T) {
+	item, _ := newBenchItem(t, 8<<20) // never opened: no handle holds it
+	writerRunning := func() bool {
+		item.metaStateMu.RLock()
+		defer item.metaStateMu.RUnlock()
+		return item.metaFlushCh != nil
+	}
+	deadline := time.Now().Add(3 * metaFlushInterval)
+	for writerRunning() {
+		if time.Now().After(deadline) {
+			t.Fatal("metadata writer still running with no open handle and nothing to flush")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+
+	data := make([]byte, 128<<10)
+	if _, _, err := item.WriteAtNoOverwrite(data, 0); err != nil {
+		t.Fatal(err)
+	}
+	if err := item.buf.Flush(); err != nil {
+		t.Fatal(err)
+	}
+	written := ranges.Range{Pos: 0, Size: int64(len(data))}
+	deadline = time.Now().Add(2 * metaFlushInterval)
+	for {
+		var info ItemInfo
+		if err := decodeJSONFile(item.metaPath, &info); err == nil && info.Rs.Present(written) {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("a write after the writer parked never reached the metadata file")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}
+
 func TestMetadataSnapshotReplacesLoadedRanges(t *testing.T) {
 	item, _ := newBenchItem(t, 8<<20)
 	data := make([]byte, 256<<10)
