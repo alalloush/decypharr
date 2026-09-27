@@ -33,6 +33,8 @@ const (
 	// against the API (the documented 1000 is not enforced). remove_oldest
 	// uses it when `limit` is unset; a larger `limit` is clamped down to it.
 	maxTorrentLimit = 5000
+
+	profileCacheDuration = time.Hour
 )
 
 type AllDebrid struct {
@@ -43,7 +45,7 @@ type AllDebrid struct {
 	statusRetryBackoff    []time.Duration
 	client                *request.Client
 	repairClient          *request.Client
-	Profile               *types.Profile `json:"profile"`
+	profile               types.ProfileCache
 	logger                zerolog.Logger
 	config                config.Debrid
 }
@@ -730,9 +732,10 @@ func (ad *AllDebrid) enforceSlotLimit() error {
 }
 
 func (ad *AllDebrid) GetProfile() (*types.Profile, error) {
-	if ad.Profile != nil {
-		return ad.Profile, nil
-	}
+	return ad.profile.Get(profileCacheDuration, ad.fetchProfile)
+}
+
+func (ad *AllDebrid) fetchProfile() (*types.Profile, error) {
 	var res UserProfileResponse
 
 	resp, err := ad.doRequest(context.Background(), ad.client, "/user", nil, &res)
@@ -769,7 +772,6 @@ func (ad *AllDebrid) GetProfile() (*types.Profile, error) {
 	} else {
 		profile.Type = "free"
 	}
-	ad.Profile = profile
 	return profile, nil
 }
 

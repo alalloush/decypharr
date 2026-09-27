@@ -49,7 +49,7 @@ func usenetTorbox(t *testing.T, failUsenet bool, plan string) (*Torbox, *usenetR
 	}))
 	t.Cleanup(srv.Close)
 	tb := testTorbox(srv.URL)
-	tb.Profile = &types.Profile{Type: plan}
+	seedProfile(t, tb, &types.Profile{Type: plan})
 	return tb, &reqs
 }
 

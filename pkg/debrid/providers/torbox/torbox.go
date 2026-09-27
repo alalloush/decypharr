@@ -30,7 +30,11 @@ import (
 	"go.uber.org/ratelimit"
 )
 
-const defaultHost = "https://api.torbox.app/v1"
+const (
+	defaultHost = "https://api.torbox.app/v1"
+	// The plan decides the slot count, so a plan change shows within an hour.
+	profileCacheDuration = time.Hour
+)
 
 var planSlots = map[string]int{
 	"essential": 3,
@@ -46,7 +50,7 @@ type Torbox struct {
 	client                *request.Client
 	submitClient          *request.Client
 	logger                zerolog.Logger
-	Profile               *types.Profile
+	profile               types.ProfileCache
 	config                config.Debrid
 	downloadPresentCache  sync.Map
 	downloadPresentMu     sync.Mutex
@@ -763,9 +767,10 @@ func (tb *Torbox) GetAvailableSlots() (int, error) {
 }
 
 func (tb *Torbox) GetProfile() (*types.Profile, error) {
-	if tb.Profile != nil {
-		return tb.Profile, nil
-	}
+	return tb.profile.Get(profileCacheDuration, tb.fetchProfile)
+}
+
+func (tb *Torbox) fetchProfile() (*types.Profile, error) {
 	var data ProfileResponse
 
 	resp, err := tb.doGet("/api/user/me", map[string]string{"settings": "true"}, &data)
@@ -805,9 +810,6 @@ func (tb *Torbox) GetProfile() (*types.Profile, error) {
 	default:
 		profile.Type = "free"
 	}
-
-	tb.Profile = profile
-
 	return profile, nil
 }
 
