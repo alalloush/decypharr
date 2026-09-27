@@ -70,6 +70,7 @@ func New(dc config.Debrid, ratelimits map[string]ratelimit.Limiter) (*RealDebrid
 		request.WithRateLimiter(ratelimits["main"]),
 		request.WithRetryableStatus(http.StatusTooManyRequests),
 		request.WithProxy(dc.Proxy),
+		request.WithInsecureSkipVerify(dc.InsecureSkipVerify),
 	}
 
 	repairOpts := []request.ClientOption{
@@ -79,6 +80,7 @@ func New(dc config.Debrid, ratelimits map[string]ratelimit.Limiter) (*RealDebrid
 		request.WithRetryableStatus(429),
 		request.WithRateLimiter(ratelimits["repair"]),
 		request.WithProxy(dc.Proxy),
+		request.WithInsecureSkipVerify(dc.InsecureSkipVerify),
 	}
 
 	r := &RealDebrid{

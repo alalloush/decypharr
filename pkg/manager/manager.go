@@ -120,6 +120,11 @@ type Manager struct {
 
 	// Hearsay network participation; nil when disabled.
 	hearsay *hearsay.Service
+
+	// insecureStreamClient is streamClient without TLS certificate
+	// verification, for debrids that set insecure_skip_verify. Pick the
+	// client with streamClientFor.
+	insecureStreamClient *http.Client
 }
 
 var _ repair.Backend = (*Manager)(nil)
@@ -137,37 +142,6 @@ func New() *Manager {
 	// Initialize debrid registry
 	ctx := context.Background()
 
-	// Optimized transport for high-performance streaming with HTTP/2 multiplexing
-	// DNS resolver with caching
-	dialer := &net.Dialer{
-		Timeout:   5 * time.Second,  // Fast connection timeout
-		KeepAlive: 30 * time.Second, // Keep connections alive
-	}
-
-	transport := &http.Transport{
-		TLSClientConfig: &tls.Config{
-			InsecureSkipVerify: true,
-			MinVersion:         tls.VersionTLS12,
-			ClientSessionCache: tls.NewLRUClientSessionCache(200),
-		},
-		TLSHandshakeTimeout:    20 * time.Second,
-		MaxIdleConns:           1000,
-		MaxIdleConnsPerHost:    500,
-		MaxConnsPerHost:        500,
-		IdleConnTimeout:        120 * time.Second,
-		DisableCompression:     false, // Enable compression for better multiplexing
-		DialContext:            dialer.DialContext,
-		Proxy:                  http.ProxyFromEnvironment,
-		MaxResponseHeaderBytes: 1 << 20,   // 1MB header buffer for CDN responses
-		WriteBufferSize:        32 << 10,  // requests are tiny
-		ReadBufferSize:         256 << 10, // caps how much a single body.Read can return
-	}
-
-	streamClient := &http.Client{
-		Timeout:   0,
-		Transport: transport,
-	}
-
 	usenetTimeout, err := utils.ParseDuration(cfg.Usenet.ProcessingTimeout)
 	if err != nil {
 		usenetTimeout = 10 * time.Minute
@@ -183,7 +157,8 @@ func New() *Manager {
 		queue:                  newQueue(strg, cfg.RemoveStalledAfter),
 		ctx:                    ctx,
 		ready:                  make(chan struct{}),
-		streamClient:           streamClient,
+		streamClient:           newStreamClient(false),
+		insecureStreamClient:   newStreamClient(true),
 		usenetTimeout:          usenetTimeout,
 		debridSpeedTestResults: xsync.NewMap[string, debridTypes.SpeedTestResult](),
 		activeStreams:          xsync.NewMap[string, *ActiveStream](),
@@ -195,6 +170,66 @@ func New() *Manager {
 
 	// Create migrator
 	return instance
+}
+
+// newStreamClient builds the client for CDN downloads and streams, tuned for
+// many long-lived range requests. Certificates are verified unless
+// insecureSkipVerify is set.
+func newStreamClient(insecureSkipVerify bool) *http.Client {
+	dialer := &net.Dialer{
+		Timeout:   5 * time.Second,  // Fast connection timeout
+		KeepAlive: 30 * time.Second, // Keep connections alive
+	}
+	transport := &http.Transport{
+		TLSClientConfig: &tls.Config{
+			InsecureSkipVerify: insecureSkipVerify,
+			MinVersion:         tls.VersionTLS12,
+			ClientSessionCache: tls.NewLRUClientSessionCache(200),
+		},
+		TLSHandshakeTimeout:    20 * time.Second,
+		MaxIdleConns:           1000,
+		MaxIdleConnsPerHost:    500,
+		MaxConnsPerHost:        500,
+		IdleConnTimeout:        120 * time.Second,
+		DisableCompression:     false, // Enable compression for better multiplexing
+		DialContext:            dialer.DialContext,
+		Proxy:                  http.ProxyFromEnvironment,
+		MaxResponseHeaderBytes: 1 << 20,   // 1MB header buffer for CDN responses
+		WriteBufferSize:        32 << 10,  // requests are tiny
+		ReadBufferSize:         256 << 10, // caps how much a single body.Read can return
+	}
+	return &http.Client{Transport: transport}
+}
+
+// streamClientFor returns the client for download links from the named
+// debrid: the verifying one, unless that debrid set insecure_skip_verify.
+func (m *Manager) streamClientFor(debridName string) *http.Client {
+	if m.clients != nil {
+		if client, ok := m.clients.Load(debridName); ok && client.Config().InsecureSkipVerify {
+			return m.insecureStreamClient
+		}
+	}
+	return m.streamClient
+}
+
+// logTLSVerification tells operators at start-up that provider certificates
+// are verified (they were not before) and warns for every provider that
+// turned verification off.
+func (m *Manager) logTLSVerification(cfg *config.Config) {
+	if len(cfg.Debrids) == 0 && len(cfg.Usenet.Providers) == 0 {
+		return
+	}
+	m.logger.Info().Msg("TLS certificates are now verified for debrid, CDN and usenet connections; if a provider fails with a certificate error, set insecure_skip_verify on that provider")
+	for _, dc := range cfg.Debrids {
+		if dc.InsecureSkipVerify {
+			m.logger.Warn().Str("debrid", dc.Name).Msg("TLS certificate verification is off for this debrid (insecure_skip_verify)")
+		}
+	}
+	for _, p := range cfg.Usenet.Providers {
+		if p.InsecureSkipVerify {
+			m.logger.Warn().Str("usenet", p.Host).Msg("TLS certificate verification is off for this usenet provider (insecure_skip_verify)")
+		}
+	}
 }
 
 func (m *Manager) init() {
@@ -252,6 +287,7 @@ func (m *Manager) init() {
 
 	// Initialize usenet client
 	m.initUsenet()
+	m.logTLSVerification(cfg)
 
 	// Initialize link service
 	m.initLinkService()
@@ -334,7 +370,7 @@ func (m *Manager) initLinkService() {
 		m.refreshTorrent,
 		m.ReinsertEntry,
 		func(entry *storage.Entry) error { return m.AddOrUpdate(entry, nil) },
-		m.streamClient,
+		m.streamClientFor,
 		m.config.Retries,
 		logger.New("link"),
 	)

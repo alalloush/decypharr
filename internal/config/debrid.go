@@ -42,6 +42,11 @@ type Debrid struct {
 	// Manager) as completed downloads in the "other" category. Adopted
 	// entries are served from the mount; nothing is downloaded or linked.
 	KeepInSync bool `json:"keep_in_sync,omitempty"`
+	// InsecureSkipVerify turns off TLS certificate verification for this
+	// provider's API and download (CDN) connections. Certificates are
+	// verified by default; set this only for a provider whose certificate
+	// cannot be verified.
+	InsecureSkipVerify bool `json:"insecure_skip_verify,omitempty"`
 
 	// Folder
 	Folder        string `json:"folder,omitempty"`          // Deprecated. Use Mount MountPath instead.
@@ -164,6 +169,9 @@ func (c *Config) applyDebridEnvVars() {
 			}
 			if proxy := getEnv(prefix + "PROXY"); proxy != "" {
 				c.Debrids[i].Proxy = proxy
+			}
+			if insecure := getEnv(prefix + "INSECURE_SKIP_VERIFY"); insecure != "" {
+				c.Debrids[i].InsecureSkipVerify = parseBool(insecure)
 			}
 			if apiHost := getEnv(prefix + "API_HOST"); apiHost != "" {
 				c.Debrids[i].APIHost = apiHost

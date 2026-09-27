@@ -63,6 +63,7 @@ func New(dc config.Debrid, ratelimits map[string]ratelimit.Limiter) (*AllDebrid,
 		request.WithRateLimiter(ratelimits["main"]),
 		request.WithMaxRetries(cfg.Retries),
 		request.WithRetryableStatus(http.StatusTooManyRequests, http.StatusBadGateway),
+		request.WithInsecureSkipVerify(dc.InsecureSkipVerify),
 	}
 	if dc.Proxy != "" {
 		opts = append(opts, request.WithProxy(dc.Proxy))
@@ -72,6 +73,7 @@ func New(dc config.Debrid, ratelimits map[string]ratelimit.Limiter) (*AllDebrid,
 		request.WithRateLimiter(ratelimits["repair"]),
 		request.WithMaxRetries(4),
 		request.WithRetryableStatus(http.StatusTooManyRequests),
+		request.WithInsecureSkipVerify(dc.InsecureSkipVerify),
 	}
 	if dc.Proxy != "" {
 		repairOpts = append(repairOpts, request.WithProxy(dc.Proxy))

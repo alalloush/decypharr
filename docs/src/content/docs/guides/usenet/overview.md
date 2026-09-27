@@ -74,6 +74,8 @@ Lower `priority` = higher preference.
 
 `backbone` is optional. Set it when two providers share the same article spool so Decypharr can skip same-backbone providers after `423/430 article not found` responses.
 
+With `ssl`, the server's certificate is verified for `host`. If the certificate is issued for another name, connect with the name it is issued for, or set `"insecure_skip_verify": true` on that provider to turn verification off.
+
 Set `backup` for a fallback or block-account provider. By default, a backup is
 used only when the primary tier fails or does not have an article; a merely busy
 primary does not spend block-account traffic. To trade block usage for lower

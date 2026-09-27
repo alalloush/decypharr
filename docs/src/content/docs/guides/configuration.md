@@ -119,6 +119,7 @@ Array of Debrid services:
 | `repair_rate_limit`               | string | Separate limit for repair operations                                           | Same as `rate_limit`            |
 | `download_rate_limit`             | string | Separate limit for downloads                                                   | Same as `rate_limit`            |
 | `proxy`                           | string | HTTP(S) proxy URL                                                              | `""`                            |
+| `insecure_skip_verify`            | bool   | Turn off TLS certificate verification for this provider's API and download links. See [TLS certificate verification](#tls-certificate-verification) | `false` |
 | `unpack_rar`                      | bool   | Auto-extract RAR archives                                                      | `true`                          |
 | `minimum_free_slot`               | int    | Minimum free torrent slots to use this provider                                | `0`                             |
 | `priority`                        | int    | Submission order: lower values are tried first, ties keep config order. `0` or unset means the provider's position in the list (1, 2, …) | Config position                 |
@@ -146,6 +147,13 @@ With `keep_in_sync` on, each torrent refresh adopts the finished torrents of tha
 - When the torrent is gone from every provider, its adopted download is removed.
 - On TorBox Pro, finished usenet downloads are adopted too, since they are listed like torrents.
 - Changing the setting restarts Decypharr.
+
+### TLS certificate verification
+
+Decypharr verifies the TLS certificate of every provider API, download (CDN) link and usenet server, and of Arr and rclone endpoints. Earlier versions skipped this check on provider, download and usenet connections, so a certificate that is expired, self-signed or issued for another host now fails the connection with an `x509` certificate error. The start-up log carries a one-line notice about this.
+
+- To turn verification off for one provider whose certificate cannot be verified, set `"insecure_skip_verify": true` on that debrid (or `DECYPHARR_DEBRIDS__N__INSECURE_SKIP_VERIFY=true`) or usenet provider (`DECYPHARR_USENET__PROVIDERS__N__INSECURE_SKIP_VERIFY=true`). The settings page has a **Skip TLS Verification** checkbox for both. Each provider with verification off gets a warning in the start-up log.
+- For an Arr or rclone endpoint signed by a private CA, add the CA to the container's trust store, or set `SSL_CERT_FILE` to a PEM bundle that includes it.
 
 ## Usenet
 

@@ -57,6 +57,7 @@ func NewManager(debridConf config.Debrid, downloadRL ratelimit.Limiter, logger z
 			request.WithHeaders(headers),
 			request.WithMaxRetries(cfg.Retries),
 			request.WithRetryableStatus(http.StatusTooManyRequests, http.StatusBadGateway, 447),
+			request.WithInsecureSkipVerify(debridConf.InsecureSkipVerify),
 		}
 		if debridConf.Proxy != "" {
 			opts = append(opts, request.WithProxy(debridConf.Proxy))

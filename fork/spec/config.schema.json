@@ -183,6 +183,10 @@
           "type": "boolean",
           "description": "KeepInSync adopts completed torrents that are already on this provider\nbut were added outside decypharr (for example through Debrid Media\nManager) as completed downloads in the \"other\" category. Adopted\nentries are served from the mount; nothing is downloaded or linked."
         },
+        "insecure_skip_verify": {
+          "type": "boolean",
+          "description": "InsecureSkipVerify turns off TLS certificate verification for this\nprovider's API and download (CDN) connections. Certificates are\nverified by default; set this only for a provider whose certificate\ncannot be verified."
+        },
         "folder": {
           "type": "string",
           "description": "Deprecated. Use Mount MountPath instead.",
@@ -770,6 +774,10 @@
         "backup": {
           "type": "boolean",
           "description": "Backup marks this provider as a fallback tier. Backups are only\nconsulted when every non-backup (\"primary\") provider is excluded\n— e.g. all primaries returned article-not-found or had connection\nerrors. They are not used just because a primary's pool is busy unless\nstream_backup_wait explicitly enables urgent playback spillover. This\nmatches the \"unlimited primary + block backup for completion\" model\nthat most other Usenet clients implement, and prevents block providers\nfrom being billed for articles the unlimited could have served."
+        },
+        "insecure_skip_verify": {
+          "type": "boolean",
+          "description": "InsecureSkipVerify turns off TLS certificate verification for this\nprovider when ssl is on. Certificates are verified by default; set\nthis only for a server whose certificate cannot be verified."
         }
       },
       "type": "object"

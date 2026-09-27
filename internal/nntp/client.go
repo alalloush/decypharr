@@ -925,7 +925,7 @@ func (c *Client) createConnection(ctx context.Context, provider config.UsenetPro
 		// Dial with TLS directly if possible, or Dial then Wrap
 		tlsConfig := &tls.Config{
 			ServerName:         provider.Host,
-			InsecureSkipVerify: true,
+			InsecureSkipVerify: provider.InsecureSkipVerify,
 			MinVersion:         tls.VersionTLS12,
 		}
 		// Use tls.Dialer for simpler timeout handling

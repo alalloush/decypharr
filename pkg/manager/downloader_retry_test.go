@@ -34,13 +34,10 @@ func TestLocalDownloaderRetriesServiceUnavailable(t *testing.T) {
 	destination := filepath.Join(t.TempDir(), "release.mkv")
 	var downloaded atomic.Int64
 	d := &Downloader{
-		manager: &Manager{
-			ctx:          t.Context(),
-			streamClient: server.Client(),
-		},
-		logger: zerolog.Nop(),
+		manager: &Manager{ctx: t.Context()},
+		logger:  zerolog.Nop(),
 	}
-	if err := d.localDownloader(server.URL, destination, nil, func(delta, _ int64) {
+	if err := d.localDownloader(server.Client(), server.URL, destination, nil, func(delta, _ int64) {
 		downloaded.Add(delta)
 	}); err != nil {
 		t.Fatalf("localDownloader() error = %v", err)
@@ -108,13 +105,10 @@ func TestLocalDownloaderResumesAfterUnexpectedEOF(t *testing.T) {
 	destination := filepath.Join(t.TempDir(), "release.mkv")
 	var downloaded atomic.Int64
 	d := &Downloader{
-		manager: &Manager{
-			ctx:          t.Context(),
-			streamClient: client,
-		},
-		logger: zerolog.Nop(),
+		manager: &Manager{ctx: t.Context()},
+		logger:  zerolog.Nop(),
 	}
-	if err := d.localDownloader("https://cdn.example/release.mkv", destination, nil, func(delta, _ int64) {
+	if err := d.localDownloader(client, "https://cdn.example/release.mkv", destination, nil, func(delta, _ int64) {
 		downloaded.Add(delta)
 	}); err != nil {
 		t.Fatalf("localDownloader() error = %v", err)

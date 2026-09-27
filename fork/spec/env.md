@@ -55,6 +55,7 @@ Indexes 0 to 9. The other keys of an index apply only when that index's `NAME` i
 | `DECYPHARR_DEBRIDS__N__API_KEY` | `debrids[N].api_key` | string, secret | |
 | `DECYPHARR_DEBRIDS__N__FOLDER` | `debrids[N].folder` | string | Deprecated field. |
 | `DECYPHARR_DEBRIDS__N__PROXY` | `debrids[N].proxy` | string | HTTP(S) or `socks5://` proxy URL. |
+| `DECYPHARR_DEBRIDS__N__INSECURE_SKIP_VERIFY` | `debrids[N].insecure_skip_verify` | bool | Fork addition (audit H3). Turns off TLS certificate verification for this provider's API and download links. Verified by default. |
 | `DECYPHARR_DEBRIDS__N__API_HOST` | `debrids[N].api_host` | string | Fork addition. API base URL override (scheme, host, version path) for fake providers in tests. Empty keeps the provider's public API. |
 | `DECYPHARR_DEBRIDS__N__PRIORITY` | `debrids[N].priority` | int | Fork addition (#294). Lower is tried first; ties keep config order. `0` means config position (N+1). Ignored when not an integer. |
 | `DECYPHARR_DEBRIDS__N__KEEP_IN_SYNC` | `debrids[N].keep_in_sync` | bool | Fork addition (upstream #275, part a). Adopts finished provider torrents that nothing owns yet as completed downloads in category `other`. |
@@ -143,6 +144,7 @@ Providers use indexes 0 to 9. The other keys of an index apply only when that in
 | `DECYPHARR_USENET__PROVIDERS__N__BACKBONE` | `usenet.providers[N].backbone` | string | |
 | `DECYPHARR_USENET__PROVIDERS__N__MAX_CONNECTIONS` | `usenet.providers[N].max_connections` | int | |
 | `DECYPHARR_USENET__PROVIDERS__N__SSL` | `usenet.providers[N].ssl` | bool | |
+| `DECYPHARR_USENET__PROVIDERS__N__INSECURE_SKIP_VERIFY` | `usenet.providers[N].insecure_skip_verify` | bool | Fork addition (audit H3). Turns off TLS certificate verification for this provider. Verified by default. |
 | `DECYPHARR_USENET__PROVIDERS__N__PRIORITY` | `usenet.providers[N].priority` | int | |
 | `DECYPHARR_USENET__PROVIDERS__N__BACKUP` | `usenet.providers[N].backup` | bool | |
 

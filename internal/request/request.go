@@ -106,6 +106,15 @@ func WithProxy(proxyURL string) ClientOption {
 	}
 }
 
+// WithInsecureSkipVerify turns off TLS certificate verification. Clients
+// verify certificates by default; this is only for a provider whose
+// configuration sets insecure_skip_verify.
+func WithInsecureSkipVerify(skip bool) ClientOption {
+	return func(c *Client) {
+		c.skipTLSVerify = skip
+	}
+}
+
 // Do performs an HTTP request with retries for certain status codes
 func (c *Client) Do(req *http.Request) (*http.Response, error) {
 	// Apply headers
@@ -199,8 +208,7 @@ func retryAfterBackoff(min, max time.Duration, attemptNum int, resp *http.Respon
 // New creates a new HTTP client with the specified options
 func New(options ...ClientOption) *Client {
 	client := &Client{
-		maxRetries:    5,
-		skipTLSVerify: true,
+		maxRetries: 5,
 		retryableStatus: map[int]struct{}{
 			http.StatusTooManyRequests:     {},
 			http.StatusInternalServerError: {},
@@ -231,6 +239,7 @@ func New(options ...ClientOption) *Client {
 		transport := &http.Transport{
 			TLSClientConfig: &tls.Config{
 				InsecureSkipVerify: client.skipTLSVerify,
+				MinVersion:         tls.VersionTLS12,
 			},
 			DialContext: (&net.Dialer{
 				Timeout:   30 * time.Second,
