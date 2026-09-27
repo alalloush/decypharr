@@ -94,6 +94,7 @@ Array of Debrid services:
       "rate_limit": "200/minute",
       "workers": 50,
       "minimum_free_slot": 0,
+      "priority": 1,
       "limit": 100,
       "torrents_refresh_interval": "5m",
       "download_links_refresh_interval": "10m",
@@ -120,6 +121,7 @@ Array of Debrid services:
 | `proxy`                           | string | HTTP(S) proxy URL                                                              | `""`                            |
 | `unpack_rar`                      | bool   | Auto-extract RAR archives                                                      | `true`                          |
 | `minimum_free_slot`               | int    | Minimum free torrent slots to use this provider                                | `0`                             |
+| `priority`                        | int    | Submission order: lower values are tried first, ties keep config order. `0` or unset means the provider's position in the list (1, 2, …) | Config position                 |
 | `limit`                           | int    | Max torrents allowed on this provider                                          | `0` (unlimited)                 |
 | `workers`                         | int    | Concurrent API workers                                                         | Auto (CPU * 50 / num_providers) |
 | `torrents_refresh_interval`       | string | How often to refresh torrent list                                              | `5m`                            |

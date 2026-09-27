@@ -127,7 +127,7 @@ You can add multiple Real Debrid accounts:
 }
 ```
 
-Decypharr will use the first provider with available slots.
+Decypharr tries providers in `priority` order, lower first. Without `priority` that is their order in the list. When a provider refuses a torrent, the next one is tried.
 
 ## Troubleshooting
 

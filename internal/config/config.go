@@ -556,7 +556,7 @@ func (c *Config) setDefaults() {
 	}
 
 	for i, debrid := range c.Debrids {
-		c.Debrids[i] = c.updateDebrid(debrid)
+		c.Debrids[i] = c.updateDebrid(i, debrid)
 	}
 
 	// Set usenet defaults

@@ -1,9 +1,12 @@
 package config
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 	"runtime"
+	"slices"
+	"strconv"
 	"strings"
 )
 
@@ -19,6 +22,7 @@ type Debrid struct {
 	Proxy                        string   `json:"proxy,omitempty"`
 	UnpackRar                    bool     `json:"unpack_rar,omitempty"`
 	MinimumFreeSlot              int      `json:"minimum_free_slot,omitempty"` // Minimum active pots to use this debrid
+	Priority                     int      `json:"priority,omitempty"`          // Submission order, lower first; 0 means config position (index+1)
 	Limit                        int      `json:"limit,omitempty"`             // Maximum number of total torrents
 	TorrentsRefreshInterval      string   `json:"torrents_refresh_interval,omitempty"`
 	DownloadLinksRefreshInterval string   `json:"download_links_refresh_interval,omitempty"`
@@ -51,7 +55,24 @@ func (d Debrid) APIBaseURL(defaultHost string) string {
 	return defaultHost
 }
 
-func (c *Config) updateDebrid(d Debrid) Debrid {
+// DebridsByPriority returns a copy of debrids in submission order: ascending
+// Priority, ties kept in config order. An unset (0) Priority counts as the
+// provider's config position, as setDefaults would make it; debrids added
+// only through env overrides have not been through setDefaults.
+func DebridsByPriority(debrids []Debrid) []Debrid {
+	ordered := slices.Clone(debrids)
+	for i := range ordered {
+		if ordered[i].Priority == 0 {
+			ordered[i].Priority = i + 1
+		}
+	}
+	slices.SortStableFunc(ordered, func(a, b Debrid) int {
+		return cmp.Compare(a.Priority, b.Priority)
+	})
+	return ordered
+}
+
+func (c *Config) updateDebrid(index int, d Debrid) Debrid {
 	workers := runtime.NumCPU() * 50
 	perDebrid := workers / len(c.Debrids)
 
@@ -80,6 +101,9 @@ func (c *Config) updateDebrid(d Debrid) Debrid {
 	}
 	if d.AutoExpireLinksAfter == "" {
 		d.AutoExpireLinksAfter = DefaultAutoExpireLinksAfter
+	}
+	if d.Priority == 0 {
+		d.Priority = index + 1 // Default priority based on order
 	}
 
 	return d
@@ -126,6 +150,11 @@ func (c *Config) applyDebridEnvVars() {
 			}
 			if apiHost := getEnv(prefix + "API_HOST"); apiHost != "" {
 				c.Debrids[i].APIHost = apiHost
+			}
+			if priority := getEnv(prefix + "PRIORITY"); priority != "" {
+				if v, err := strconv.Atoi(priority); err == nil {
+					c.Debrids[i].Priority = v
+				}
 			}
 		}
 	}

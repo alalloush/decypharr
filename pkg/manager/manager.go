@@ -41,6 +41,7 @@ type Manager struct {
 	migrator     *migration.Migrator
 	repair       *repair.Service
 	clients      *xsync.Map[string, debrid.Client]
+	debridOrder  []string // client names in submission order; see FilterDebrid
 	arr          *arr.Service
 	arrService   *reacquire.Service
 	arrIndexer   *reacquire.Indexer
