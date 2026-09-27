@@ -197,6 +197,7 @@ func setClient(t *testing.T, m *Manager, dc config.Debrid) {
 		t.Fatal(err)
 	}
 	m.clients.Store(dc.Name, client)
+	m.debridOrder = append(m.debridOrder, dc.Name)
 }
 
 func refreshProvider(m *Manager, name string) error {
@@ -473,6 +474,7 @@ func TestAddNewTorrentReplacesAdoptedRow(t *testing.T) {
 		torrentSubmissions: newTorrentSubmissionGate(torrentSubmissionDedupWindow),
 	}
 	m.clients.Store("realdebrid", provider)
+	m.debridOrder = []string{"realdebrid"}
 	m.jobQueue = NewJobQueue(t.Context(), 1, func(context.Context, *Job) {})
 	t.Cleanup(m.jobQueue.Close)
 

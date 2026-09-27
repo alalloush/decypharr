@@ -7,6 +7,7 @@ import (
 	"testing"
 	"testing/synctest"
 
+	"github.com/sirrobot01/decypharr/internal/config"
 	debrid "github.com/sirrobot01/decypharr/pkg/debrid/common"
 	"github.com/sirrobot01/decypharr/pkg/debrid/types"
 	"github.com/sirrobot01/decypharr/pkg/storage"
@@ -28,6 +29,9 @@ func (p *lateFilesProvider) GetTorrent(string) (*types.Torrent, error) {
 	}
 	return t, nil
 }
+
+// Config satisfies the post-action slot-strategy lookup; no strategy is set.
+func (p *lateFilesProvider) Config() config.Debrid { return config.Debrid{} }
 
 // runFinishedWithoutFiles submits a grab the provider reports finished with
 // an empty file list and runs the post-download action to its end.
