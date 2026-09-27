@@ -4,6 +4,7 @@ Base: upstream `beta` `249ac9e` (2026-09-16). Working branch: `dev`. Remotes: `o
 
 Plan: merge open upstream PRs and fix issues, Real-Debrid and TorBox first. Alongside that work, build the language-neutral spec in `fork/spec/`. A later port is verified against this Go fork. No Rust or Bun code for now.
 
+- `PROJECT_STATE.md` and `NEXT_STEPS.md`: current status and ordered handover; OMP project setup is in `.omp/`.
 - `research/issues.md`: open-issue triage (71 issues, 2026-09-26).
 - `research/prs.md`: open-PR triage and merge order (63 PRs).
 - `research/bundles.md`: verdicts on the large feature PRs #350, #389 and #392 (not merged).
