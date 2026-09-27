@@ -359,20 +359,8 @@ func (q *QBit) handleSetCategory(w http.ResponseWriter, r *http.Request) {
 }
 
 func (q *QBit) handleAddTorrentTags(w http.ResponseWriter, r *http.Request) {
-	err := r.ParseForm()
-	if err != nil {
-		http.Error(w, "Failed to parse form data", http.StatusBadRequest)
-		return
-	}
-	ctx := r.Context()
-	hashes := queueHashes(getHashes(ctx))
-	tags := strings.Split(r.FormValue("tags"), ",")
-	for i, tag := range tags {
-		tags[i] = strings.TrimSpace(tag)
-	}
-	torrents, err := q.manager.Queue().ListFilter("", config.ProtocolTorrent, "", hashes, "", false)
-	if err != nil {
-		http.Error(w, "Failed to read the download queue", http.StatusInternalServerError)
+	torrents, tags, ok := q.tagTargets(w, r)
+	if !ok {
 		return
 	}
 	for _, t := range torrents {
@@ -382,27 +370,39 @@ func (q *QBit) handleAddTorrentTags(w http.ResponseWriter, r *http.Request) {
 }
 
 func (q *QBit) handleRemoveTorrentTags(w http.ResponseWriter, r *http.Request) {
-	err := r.ParseForm()
-	if err != nil {
-		http.Error(w, "Failed to parse form data", http.StatusBadRequest)
+	torrents, tags, ok := q.tagTargets(w, r)
+	if !ok {
 		return
 	}
-	ctx := r.Context()
-	hashes := queueHashes(getHashes(ctx))
+	for _, t := range torrents {
+		q.removeTorrentTags(t, tags)
+	}
+	utils.JSONResponse(w, nil, http.StatusOK)
+}
+
+// tagTargets returns the torrents and tags of an addTags or removeTags
+// request. Like qBittorrent it requires hashes: without them the queue filter
+// would select every torrent, and only an explicit "all" should.
+func (q *QBit) tagTargets(w http.ResponseWriter, r *http.Request) ([]*storage.Entry, []string, bool) {
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "Failed to parse form data", http.StatusBadRequest)
+		return nil, nil, false
+	}
+	hashes := getHashes(r.Context())
+	if len(hashes) == 0 {
+		http.Error(w, "No hashes provided", http.StatusBadRequest)
+		return nil, nil, false
+	}
 	tags := strings.Split(r.FormValue("tags"), ",")
 	for i, tag := range tags {
 		tags[i] = strings.TrimSpace(tag)
 	}
-	torrents, err := q.manager.Queue().ListFilter("", config.ProtocolTorrent, "", hashes, "", false)
+	torrents, err := q.manager.Queue().ListFilter("", config.ProtocolTorrent, "", queueHashes(hashes), "", false)
 	if err != nil {
 		http.Error(w, "Failed to read the download queue", http.StatusInternalServerError)
-		return
+		return nil, nil, false
 	}
-	for _, torrent := range torrents {
-		q.removeTorrentTags(torrent, tags)
-
-	}
-	utils.JSONResponse(w, nil, http.StatusOK)
+	return torrents, tags, true
 }
 
 func (q *QBit) handleGetTags(w http.ResponseWriter, r *http.Request) {

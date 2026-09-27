@@ -35,7 +35,7 @@
     </div>
 </div>
 
-<script>
+<script nonce="{{.CSPNonce}}">
     document.getElementById('loginForm').addEventListener('submit', async (e) => {
         e.preventDefault();
         let loginBtn = document.querySelector('#loginForm button[type="submit"]');

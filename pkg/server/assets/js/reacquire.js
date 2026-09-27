@@ -62,6 +62,16 @@ class ReacquireManager {
             e.preventDefault();
             this.submitReacquire();
         });
+        $('reacquireCancelBtn')?.addEventListener('click', () => $('reacquireModal').close());
+        // Pagination buttons and binding rows are rendered as markup.
+        $('jobsPaginationControls')?.addEventListener('click', (event) => {
+            const button = event.target.closest('[data-page]');
+            if (button) this.goToJobsPage(Number(button.dataset.page));
+        });
+        $('bindingResults')?.addEventListener('click', (event) => {
+            const row = event.target.closest('tr[data-binding-index]');
+            if (row) this.selectBinding(Number(row.dataset.bindingIndex));
+        });
     }
 
     async loadAll() {
@@ -246,7 +256,7 @@ class ReacquireManager {
         }
 
         let html = `
-            <button class="join-item btn btn-sm" onclick="window.reacquireManager.goToJobsPage(${this.jobsPage - 1})"
+            <button class="join-item btn btn-sm" data-page="${this.jobsPage - 1}"
                     aria-label="Previous jobs page" ${this.jobsPage === 1 ? 'disabled' : ''}>
                 <i class="bi bi-chevron-left"></i>
             </button>`;
@@ -260,12 +270,12 @@ class ReacquireManager {
                 html += '<button class="join-item btn btn-sm" disabled aria-hidden="true">…</button>';
             }
             html += `<button class="join-item btn btn-sm ${number === this.jobsPage ? 'btn-active' : ''}"
-                            onclick="window.reacquireManager.goToJobsPage(${number})"
+                            data-page="${number}"
                             aria-label="Jobs page ${number}" ${number === this.jobsPage ? 'aria-current="page"' : ''}>${number}</button>`;
             previous = number;
         });
         html += `
-            <button class="join-item btn btn-sm" onclick="window.reacquireManager.goToJobsPage(${this.jobsPage + 1})"
+            <button class="join-item btn btn-sm" data-page="${this.jobsPage + 1}"
                     aria-label="Next jobs page" ${this.jobsPage === page.totalPages ? 'disabled' : ''}>
                 <i class="bi bi-chevron-right"></i>
             </button>`;
@@ -367,7 +377,7 @@ class ReacquireManager {
         const meta = ReacquireManager.STATUS[status] || {label: status, badge: 'badge-ghost', icon: 'bi-question'};
         const spin = ReacquireManager.ACTIVE.includes(status) ? ' animate-spin' : '';
         return `<span class="badge ${meta.badge} badge-sm gap-1 whitespace-nowrap">
-            <i class="bi ${meta.icon}${spin}"></i>${meta.label}</span>`;
+            <i class="bi ${meta.icon}${spin}"></i>${this.escape(meta.label)}</span>`;
     }
 
     showJob(id) {
@@ -396,14 +406,14 @@ class ReacquireManager {
                 <td>${mutation.state === 'confirmed'
                     ? '<span class="badge badge-success badge-xs">confirmed</span>'
                     : '<span class="badge badge-warning badge-xs">intent</span>'}</td>
-                <td class="text-xs">${mutation.attempts || 0}</td>
+                <td class="text-xs">${this.escape(mutation.attempts || 0)}</td>
                 <td class="text-xs">${mutation.confirmedAt ? this.formatTime(mutation.confirmedAt) : '-'}</td>
             </tr>`).join('');
 
         const bindings = (job.bindings || []).map((binding) => `
             <tr>
                 <td class="text-xs">${this.escape(binding.entryFileName || binding.entryFileId)}</td>
-                <td class="text-xs">${binding.arrFileId || '-'}</td>
+                <td class="text-xs">${this.escape(binding.arrFileId || '-')}</td>
                 <td class="text-xs">${this.escape(binding.confidence || '-')}</td>
             </tr>`).join('');
 
@@ -490,11 +500,11 @@ class ReacquireManager {
                         ? `<span class="badge badge-outline badge-sm">${this.escape(summary.arrType)}</span>` : ''}
                 </div>
                 <div class="mt-2 flex items-baseline gap-2">
-                    <span class="text-2xl font-semibold">${summary.bindings}</span>
+                    <span class="text-2xl font-semibold">${this.escape(summary.bindings)}</span>
                     <span class="text-xs opacity-60">files bound</span>
                 </div>
                 <div class="text-xs opacity-60 mt-1">
-                    ${summary.actionable} can be replaced · updated ${this.formatTime(summary.updatedAt)}
+                    ${this.escape(summary.actionable)} can be replaced · updated ${this.formatTime(summary.updatedAt)}
                 </div>
             </div>`).join('');
     }
@@ -504,7 +514,7 @@ class ReacquireManager {
         if (!select) return;
         const current = select.value;
         select.innerHTML = '<option value="">All</option>' +
-            summaries.map((summary) => `<option value="${this.escape(summary.arrName)}">${this.escape(summary.arrName)}</option>`).join('');
+            summaries.map((summary) => `<option value="${this.escapeAttr(summary.arrName)}">${this.escape(summary.arrName)}</option>`).join('');
         select.value = current;
     }
 
@@ -566,7 +576,7 @@ class ReacquireManager {
                 ? `movie ${binding.movieId}`
                 : `series ${binding.seriesId || '-'} · season ${binding.seasonNumber ?? '-'}`;
             return `
-                <tr class="hover cursor-pointer" onclick="window.reacquireManager.selectBinding(${i})">
+                <tr class="hover cursor-pointer" data-binding-index="${i}">
                     <td><input type="radio" name="binding" class="radio radio-xs radio-primary"
                                id="binding-${i}" ${binding.arrFileId ? '' : 'disabled'}></td>
                     <td class="max-w-sm">

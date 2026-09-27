@@ -16,6 +16,9 @@ curl -H "Authorization: Bearer YOUR_API_TOKEN" \
 
 Get API token from **Settings** → **Auth** after login.
 
+The same token also works for the qBittorrent and SABnzbd endpoints and, as a password or bearer token, for
+[WebDAV](../../guides/shares/webdav/#authentication).
+
 ## Endpoints
 
 ### GET /version
@@ -36,7 +39,9 @@ curl http://localhost:8282/version
 
 ### GET /api/config
 
-Get current configuration.
+Get current configuration. Every stored credential comes back as `"********"`; see
+[Stored credentials](../../guides/configuration/#stored-credentials) for the fields. The web UI username and the API
+token are included.
 
 ```bash
 curl -H "Authorization: Bearer TOKEN" \
@@ -45,7 +50,19 @@ curl -H "Authorization: Bearer TOKEN" \
 
 ### POST /api/config
 
-Update configuration.
+Update configuration. The body is merged into the stored configuration: omitted keys keep their values, and a posted
+list (`debrids`, `arrs`, `usenet.providers`) replaces the stored list. Credentials follow these rules:
+
+- `"********"` keeps the stored value, so a `GET`, edit, `POST` round trip keeps every credential. In
+  `download_api_keys`, `"********"` at index *i* keeps stored key *i*.
+- A credential left out of a posted `debrids`, `arrs` or `usenet.providers` entry keeps the stored one. Debrids are
+  matched by `name` (or `provider`), Arrs by `name`, usenet providers by host, port and username.
+- `""` clears a credential; `[]` clears `download_api_keys`.
+- A kept credential does not follow its entry to a new destination. If a debrid's `provider`, `api_host` or `proxy`
+  (`rc_url` for its `rc_pass`), an Arr's `host`, or `mount.external_rclone.rc_url` changes to a new value, the request
+  fails with `400` until the credential is sent again. Clearing `api_host` or `proxy` is allowed: it returns to the
+  provider's own API.
+- `"********"` with no stored value behind it fails with `400`.
 
 ```bash
 curl -X POST \

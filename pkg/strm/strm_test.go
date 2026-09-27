@@ -66,6 +66,8 @@ func TestBaseURL(t *testing.T) {
 		{config.Config{AppURL: "https://x.example.com/base", URLBase: "/base/"}, "https://x.example.com/base"},
 		{config.Config{BindAddress: "0.0.0.0", Port: "8282", URLBase: "/"}, "http://localhost:8282"},
 		{config.Config{BindAddress: "10.0.0.5", Port: "9090"}, "http://10.0.0.5:9090"},
+		{config.Config{BindAddress: "::1", Port: "8282"}, "http://[::1]:8282"},
+		{config.Config{BindAddress: "::", Port: "8282"}, "http://localhost:8282"},
 	}
 	for _, tt := range tests {
 		if got := BaseURL(&tt.cfg); got != tt.want {

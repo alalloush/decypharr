@@ -469,16 +469,6 @@ func (m *Manager) RemoveEntry(entry *FileInfo) error {
 	return m.RemoveTorrentFile(entry.Parent(), entry.Name())
 }
 
-func (m *Manager) CopyEntry(entry *FileInfo, destPath string, delete bool) error {
-	if entry == nil {
-		return fmt.Errorf("entry is nil")
-	}
-	if !entry.CanDelete() {
-		return fmt.Errorf("entry %s cannot be copied", entry.name)
-	}
-	return fmt.Errorf("copying entries is not supported yet")
-}
-
 func (m *Manager) RemoveTorrentFile(torrentName, filename string) error {
 	item, err := m.storage.GetEntryItem(torrentName)
 	if err != nil {

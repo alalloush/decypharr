@@ -239,7 +239,7 @@
                 </label>
             </div>
             <div class="modal-action mt-0 grid grid-cols-2 gap-2 bg-base-200/40 px-4 py-4 sm:flex sm:px-6">
-                <button type="button" class="btn btn-ghost w-full sm:w-auto" onclick="document.getElementById('runRepairModal').close()">Cancel</button>
+                <button type="button" id="runRepairCancelBtn" class="btn btn-ghost w-full sm:w-auto">Cancel</button>
                 <button type="submit" class="btn btn-primary w-full sm:w-auto" id="runRepairSubmitBtn">
                     <i class="bi bi-play-fill mr-1"></i>Run
                 </button>
@@ -289,7 +289,7 @@
             </div>
             <div id="clearStateError" class="text-error text-sm hidden"></div>
             <div class="modal-action grid grid-cols-2 gap-2 sm:flex">
-                <button type="button" class="btn btn-ghost w-full sm:w-auto" onclick="document.getElementById('clearStateModal').close()">Cancel</button>
+                <button type="button" id="clearStateCancelBtn" class="btn btn-ghost w-full sm:w-auto">Cancel</button>
                 <button type="submit" class="btn btn-warning w-full sm:w-auto" id="clearStateSubmitBtn">
                     <i class="bi bi-eraser mr-1"></i>Clear
                 </button>
@@ -345,7 +345,7 @@
     </form>
 </dialog>
 
-<script>
+<script nonce="{{.CSPNonce}}">
     document.addEventListener('DOMContentLoaded', () => {
         window.repairManager = new RepairManager();
     });

@@ -36,6 +36,13 @@ class RepairManager {
             e.preventDefault();
             this.recheckMedia();
         });
+        $('runRepairCancelBtn')?.addEventListener('click', () => $('runRepairModal').close());
+        $('clearStateCancelBtn')?.addEventListener('click', () => $('clearStateModal').close());
+        // Pagination buttons are rendered as markup.
+        $('brokenPaginationControls')?.addEventListener('click', (e) => {
+            const button = e.target.closest('[data-page]');
+            if (button) this.goToBrokenPage(Number(button.dataset.page));
+        });
     }
 
     async loadAll() {
@@ -198,12 +205,12 @@ class RepairManager {
                 ${run.source ? `<span class="opacity-70 text-xs">${this.escape(run.source)}</span>` : ''}
             </div>
             <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-2 mt-3 text-xs">
-                <div>Candidates: <strong>${stats.candidates ?? 0}</strong></div>
-                <div>Probed: <strong>${stats.probed ?? 0}</strong></div>
-                <div class="${stats.broken ? 'text-error' : ''}">Broken: <strong>${stats.broken ?? 0}</strong></div>
-                <div class="${stats.healthy ? 'text-success' : ''}">Healthy: <strong>${stats.healthy ?? 0}</strong></div>
-                <div class="${stats.repaired ? 'text-success' : ''}">Repaired: <strong>${stats.repaired ?? 0}</strong></div>
-                <div class="${stats.repair_failed ? 'text-error' : ''}">Repair fail: <strong>${stats.repair_failed ?? 0}</strong></div>
+                <div>Candidates: <strong>${this.escape(stats.candidates ?? 0)}</strong></div>
+                <div>Probed: <strong>${this.escape(stats.probed ?? 0)}</strong></div>
+                <div class="${stats.broken ? 'text-error' : ''}">Broken: <strong>${this.escape(stats.broken ?? 0)}</strong></div>
+                <div class="${stats.healthy ? 'text-success' : ''}">Healthy: <strong>${this.escape(stats.healthy ?? 0)}</strong></div>
+                <div class="${stats.repaired ? 'text-success' : ''}">Repaired: <strong>${this.escape(stats.repaired ?? 0)}</strong></div>
+                <div class="${stats.repair_failed ? 'text-error' : ''}">Repair fail: <strong>${this.escape(stats.repair_failed ?? 0)}</strong></div>
             </div>
             ${run.error ? `<div class="mt-2 text-error text-xs">${this.escape(run.error)}</div>` : ''}
         `;
@@ -420,7 +427,7 @@ class RepairManager {
             card.className = 'stat bg-base-200 rounded-box p-3';
             card.innerHTML = `
                 <div class="stat-title text-xs capitalize">${key}</div>
-                <div class="stat-value text-lg ${this.healthColor(key)}">${n}</div>
+                <div class="stat-value text-lg ${this.healthColor(key)}">${this.escape(n)}</div>
             `;
             grid.appendChild(card);
         }
@@ -450,7 +457,7 @@ class RepairManager {
 			const el = document.createElement('div');
 			el.className = 'bg-base-100 rounded p-2';
 			const value = stats[k] ?? 0;
-            el.innerHTML = `<div class="text-[10px] opacity-60 uppercase">${label}</div><div class="font-mono">${value}</div>`;
+            el.innerHTML = `<div class="text-[10px] opacity-60 uppercase">${label}</div><div class="font-mono">${this.escape(value)}</div>`;
             container.appendChild(el);
         }
     }
@@ -542,16 +549,16 @@ class RepairManager {
                 </td>
                 <td class="font-mono text-sm break-all">${this.escape(h.entry_name)}</td>
                 <td><span class="badge badge-ghost badge-sm">${this.escape(h.protocol || 'unknown')}</span></td>
-                <td>${fileCount}</td>
-                <td class="text-error font-medium">${brokenCount}</td>
+                <td>${this.escape(fileCount)}</td>
+                <td class="text-error font-medium">${this.escape(brokenCount)}</td>
                 <td class="text-xs">${this.escape(reason)}</td>
                 <td class="text-xs">${lastChecked}</td>
                 <td class="text-xs">${lastRepair}</td>
                 <td class="text-right whitespace-nowrap">
-                    <button class="btn btn-xs btn-outline" data-action="recheck" data-name="${this.escapeAttr(h.entry_name)}" aria-label="Recheck ${this.escape(h.entry_name)}">
+                    <button class="btn btn-xs btn-outline" data-action="recheck" data-name="${this.escapeAttr(h.entry_name)}" aria-label="Recheck ${this.escapeAttr(h.entry_name)}">
                         <i class="bi bi-search-heart"></i>
                     </button>
-                    <button class="btn btn-xs btn-error btn-outline" data-action="fix" data-name="${this.escapeAttr(h.entry_name)}" aria-label="Fix ${this.escape(h.entry_name)}">
+                    <button class="btn btn-xs btn-error btn-outline" data-action="fix" data-name="${this.escapeAttr(h.entry_name)}" aria-label="Fix ${this.escapeAttr(h.entry_name)}">
                         <i class="bi bi-bandaid"></i>
                     </button>
                 </td>
@@ -613,17 +620,17 @@ class RepairManager {
         }
 
         let html = `<button class="join-item btn btn-sm ${page === 1 ? 'btn-disabled' : ''}"
-                            onclick="window.repairManager.goToBrokenPage(${page - 1})">«</button>`;
+                            data-page="${page - 1}">«</button>`;
         for (let i = 1; i <= totalPages; i++) {
             if (i === 1 || i === totalPages || (i >= page - 2 && i <= page + 2)) {
                 html += `<button class="join-item btn btn-sm ${i === page ? 'btn-active' : ''}"
-                                onclick="window.repairManager.goToBrokenPage(${i})">${i}</button>`;
+                                data-page="${i}">${i}</button>`;
             } else if (i === page - 3 || i === page + 3) {
                 html += `<button class="join-item btn btn-sm btn-disabled">…</button>`;
             }
         }
         html += `<button class="join-item btn btn-sm ${page === totalPages ? 'btn-disabled' : ''}"
-                         onclick="window.repairManager.goToBrokenPage(${page + 1})">»</button>`;
+                         data-page="${page + 1}">»</button>`;
         controls.innerHTML = html;
     }
 
@@ -644,7 +651,7 @@ class RepairManager {
             if (f.media_id) ids.push(`media:${f.media_id}`);
             if (f.episode_id) ids.push(`ep:${f.episode_id}`);
             if (f.arr_file_id) ids.push(`file:${f.arr_file_id}`);
-            const idStr = ids.length ? `<span class="font-mono text-[10px] opacity-70">${ids.join(' · ')}</span>` : '';
+            const idStr = ids.length ? `<span class="font-mono text-[10px] opacity-70">${this.escape(ids.join(' · '))}</span>` : '';
             const size = f.size ? this.formatBytes(f.size) : '-';
             return `
                 <tr>
@@ -727,14 +734,14 @@ class RepairManager {
             const duration = start && end ? this.formatDuration(end - start) : (start ? 'running' : '-');
             tr.innerHTML = `
                 <td class="font-mono text-sm">${start ? start.toLocaleString() : '-'}</td>
-                <td>${run.trigger || '-'}</td>
+                <td>${this.escape(run.trigger || '-')}</td>
                 <td>${this.statusBadge(run.status)}</td>
-                <td>${run.stats?.probed ?? 0}</td>
-                <td class="${run.stats?.broken ? 'text-error font-medium' : ''}">${run.stats?.broken ?? 0}</td>
-                <td class="${run.stats?.repaired ? 'text-success font-medium' : ''}">${run.stats?.repaired ?? 0}</td>
-                <td class="${run.stats?.cleared ? 'text-warning font-medium' : ''}">${run.stats?.cleared ?? 0}</td>
+                <td>${this.escape(run.stats?.probed ?? 0)}</td>
+                <td class="${run.stats?.broken ? 'text-error font-medium' : ''}">${this.escape(run.stats?.broken ?? 0)}</td>
+                <td class="${run.stats?.repaired ? 'text-success font-medium' : ''}">${this.escape(run.stats?.repaired ?? 0)}</td>
+                <td class="${run.stats?.cleared ? 'text-warning font-medium' : ''}">${this.escape(run.stats?.cleared ?? 0)}</td>
                 <td>${duration}</td>
-                <td class="text-xs text-error">${run.error || ''}</td>
+                <td class="text-xs text-error">${this.escape(run.error || '')}</td>
             `;
             tbody.appendChild(tr);
         }
@@ -747,7 +754,7 @@ class RepairManager {
             failed: 'badge-error',
             cancelled: 'badge-warning',
         }[status] || 'badge-ghost';
-        return `<span class="badge ${cls}">${status || 'unknown'}</span>`;
+        return `<span class="badge ${cls}">${this.escape(status || 'unknown')}</span>`;
     }
 
     formatDuration(ms) {

@@ -287,9 +287,14 @@ func (s *Server) handleDeleteTorrents(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleGetConfig(w http.ResponseWriter, r *http.Request) {
-	arrStorage := s.manager.Arr()
-	cfg := *config.Get()
-	cfg.Arrs = arrStorage.SyncToConfig()
+	// A deep copy: redaction edits the provider and Arr lists in place.
+	cfg, err := config.Get().Clone()
+	if err != nil {
+		http.Error(w, "Failed to read config", http.StatusInternalServerError)
+		return
+	}
+	cfg.Arrs = s.manager.Arr().SyncToConfig()
+	redactSecrets(cfg)
 
 	// Create response with API token info
 	type ConfigResponse struct {
@@ -300,7 +305,7 @@ func (s *Server) handleGetConfig(w http.ResponseWriter, r *http.Request) {
 		AuthTokenOnly bool   `json:"auth_token_only"`
 	}
 
-	response := &ConfigResponse{Config: &cfg}
+	response := &ConfigResponse{Config: cfg}
 
 	// AddOrUpdate API token and auth information
 	auth := cfg.GetAuth()
@@ -329,6 +334,10 @@ func (s *Server) handleUpdateConfig(w http.ResponseWriter, r *http.Request) {
 			invalid = true
 			return fmt.Errorf("invalid request body: %w", err)
 		}
+		if err := restoreSecrets(current, s.manager.Arr().SyncToConfig(), body, &next); err != nil {
+			invalid = true
+			return err
+		}
 		next.MigrateVirtualFolders()
 		if err := next.ValidateVirtualFolders(); err != nil {
 			invalid = true
@@ -337,7 +346,6 @@ func (s *Server) handleUpdateConfig(w http.ResponseWriter, r *http.Request) {
 		next.Auth = current.Auth
 		next.SessionSecret = current.SessionSecret
 		next.UseAuth = current.UseAuth
-		next.EnableWebdavAuth = current.EnableWebdavAuth
 		if next.Strm.Secret == "" {
 			next.Strm.Secret = current.Strm.Secret
 		}
@@ -948,10 +956,6 @@ func (s *Server) handleUpdateAuth(w http.ResponseWriter, r *http.Request) {
 		response["message"] = "Token-only authentication enabled"
 		if auth := cfg.GetAuth(); auth != nil {
 			response["token"] = auth.APIToken
-		}
-		if cfg.EnableWebdavAuth {
-			response["message"] += ". WebDAV auth is still enabled but has no credential to accept — turn it off, or WebDAV clients will be rejected"
-			s.logger.Warn().Msg("Token-only auth enabled while WebDAV auth is on")
 		}
 	}
 	utils.JSONResponse(w, response, http.StatusOK)

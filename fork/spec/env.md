@@ -37,7 +37,7 @@ Behaviour as of upstream `beta` 249ac9e plus this fork:
 | `DECYPHARR_MIN_FILE_SIZE` | `min_file_size` | string | Size such as `100MB`. |
 | `DECYPHARR_MAX_FILE_SIZE` | `max_file_size` | string | Size such as `50GB`. |
 | `DECYPHARR_REMOVE_STALLED_AFTER` | `remove_stalled_after` | string | Duration. |
-| `DECYPHARR_ENABLE_WEBDAV_AUTH` | `enable_webdav_auth` | bool | |
+| `DECYPHARR_WEBDAV_ALLOW_DELETE` | `webdav_allow_delete` | bool | Fork addition. WebDAV is read-only unless set: a DELETE of a torrent folder, or of its last file, deletes the torrent from the debrid provider. Replaces `enable_webdav_auth`; WebDAV now asks for credentials whenever `use_auth` is on. |
 | `DECYPHARR_RETRIES` | `retries` | int | |
 | `DECYPHARR_SKIP_AUTO_MOVE` | `skip_auto_move` | bool | |
 | `DECYPHARR_CATEGORIES__N` | `categories[N]` | string | N from 0 to 99. Reading stops at the first unset index. |
@@ -175,6 +175,6 @@ These are read outside `internal/config` and are not config overrides.
 |---|---|---|
 | `DECYPHARR_FIX_NZB_SIZES` | `pkg/manager/manager.go` | `1` runs the NZB size fix-up at startup. |
 | `UMASK` | `cmd/decypharr/main.go` | Process umask, octal. An invalid value stops startup. |
-| `ENABLE_PPROF` | `main.go` | Any value enables pprof, like the command-line flag. |
+| `ENABLE_PPROF` | `main.go` | Any value starts pprof (no authentication) on the `-pprof` address, which defaults to `127.0.0.1:6060`. Pass `-pprof :6060` to listen on every interface, for example to reach it through a Docker port mapping. |
 | `DFS_FUSE_BACKEND` | `pkg/mount/dfs/backend/interface.go` | FUSE backend for the DFS mount on Linux; default `hanwen`. |
 | `QBIT_PORT` | `cmd/healthcheck/main.go` | Port the healthcheck probes; defaults to the config `port`. |

@@ -69,3 +69,42 @@ func TestCredentialChangesInvalidateBrowserSessions(t *testing.T) {
 		})
 	}
 }
+
+// The session cookie had no Secure flag, so behind a TLS-terminating proxy
+// (Pangolin, Traefik) a browser would also send it over plain HTTP.
+func TestSessionCookieIsSecureOverHTTPS(t *testing.T) {
+	config.Reset()
+	config.SetConfigPath(t.TempDir())
+	t.Cleanup(config.Reset)
+	cfg := config.Get()
+	if err := cfg.SetCredentials("admin", "secret"); err != nil {
+		t.Fatal(err)
+	}
+	s := &Server{cookie: newCookieStore(cfg.SecretKey())}
+	for _, tc := range []struct {
+		name, target, forwardedProto string
+		secure                       bool
+	}{
+		{"plain HTTP", "http://decypharr.lan/login", "", false},
+		{"TLS", "https://decypharr.example/login", "", true},
+		{"TLS-terminating proxy", "http://decypharr.lan/login", "https", true},
+		{"proxy chain", "http://decypharr.lan/login", "HTTPS, http", true},
+		{"proxy over plain HTTP", "http://decypharr.lan/login", "http", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := httptest.NewRequest(http.MethodPost, tc.target, strings.NewReader(`{"username":"admin","password":"secret"}`))
+			if tc.forwardedProto != "" {
+				r.Header.Set("X-Forwarded-Proto", tc.forwardedProto)
+			}
+			w := httptest.NewRecorder()
+			s.LoginHandler(w, r)
+			cookies := w.Result().Cookies()
+			if w.Code != http.StatusSeeOther || len(cookies) != 1 {
+				t.Fatalf("login = %d with %d cookies: %s", w.Code, len(cookies), w.Body.String())
+			}
+			if cookies[0].Secure != tc.secure {
+				t.Fatalf("session cookie Secure = %t, want %t", cookies[0].Secure, tc.secure)
+			}
+		})
+	}
+}

@@ -90,8 +90,8 @@ func (c *Config) applyEnvOverrides() {
 	if val := getEnv("REMOVE_STALLED_AFTER"); val != "" {
 		c.RemoveStalledAfter = val
 	}
-	if val := getEnv("ENABLE_WEBDAV_AUTH"); val != "" {
-		c.EnableWebdavAuth = parseBool(val)
+	if val := getEnv("WEBDAV_ALLOW_DELETE"); val != "" {
+		c.WebdavAllowDelete = parseBool(val)
 	}
 	if val := getEnv("RETRIES"); val != "" {
 		if v, err := strconv.Atoi(val); err == nil {

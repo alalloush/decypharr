@@ -103,6 +103,20 @@ class TorrentDashboard {
                 this.toggleTorrentSelection(e.target.dataset.hash, e.target.checked);
             }
         });
+
+        // Row delete buttons
+        this.refs.torrentsList.addEventListener('click', (e) => {
+            const button = e.target.closest('button[data-action]');
+            if (button) {
+                this.deleteTorrent(button.dataset.hash, button.dataset.category, button.dataset.action === 'delete-debrid');
+            }
+        });
+
+        // Pagination
+        this.refs.paginationControls.addEventListener('click', (e) => {
+            const button = e.target.closest('[data-page]');
+            if (button) this.goToPage(Number(button.dataset.page));
+        });
     }
 
     bindContextMenu() {
@@ -277,18 +291,20 @@ class TorrentDashboard {
 
         this.refs.torrentsList.innerHTML = this.state.torrents.map(torrent => {
             const isSelected = this.state.selectedEntries.has(torrent.info_hash);
+            const hash = this.escapeAttr(torrent.info_hash);
+            const category = this.escapeAttr(torrent.category || '');
             return `
-                <tr class="hover" data-hash="${torrent.info_hash}" data-name="${this.escapeHtml(torrent.name)}" data-category="${this.escapeHtml(torrent.category || '')}">
+                <tr class="hover" data-hash="${hash}" data-name="${this.escapeAttr(torrent.name)}" data-category="${category}">
                     <td>
                         <label class="cursor-pointer">
                             <input type="checkbox" class="checkbox checkbox-sm checkbox-primary torrent-select"
-                                   data-hash="${torrent.info_hash}" ${isSelected ? 'checked' : ''}>
+                                   data-hash="${hash}" ${isSelected ? 'checked' : ''}>
                         </label>
                     </td>
                     <td>
                         <div class="flex flex-col">
                             <span class="font-medium">${this.escapeHtml(torrent.name)}</span>
-                            <span class="text-xs text-base-content/60 font-mono">${torrent.info_hash.substring(0, 8)}...</span>
+                            <span class="text-xs text-base-content/60 font-mono">${this.escapeHtml(torrent.info_hash.substring(0, 8))}...</span>
                         </div>
                     </td>
                     <td>
@@ -310,7 +326,7 @@ class TorrentDashboard {
                         ${torrent.active_provider ? `<span class="badge badge-sm badge-primary">${this.escapeHtml(torrent.active_provider)}</span>` : '-'}
                     </td>
                     <td>
-                        <span class="text-sm">${torrent.num_seeds || 0}</span>
+                        <span class="text-sm">${this.escapeHtml(torrent.num_seeds || 0)}</span>
                     </td>
                     <td>
                         ${this.renderStateBadge(torrent.state)}
@@ -318,12 +334,12 @@ class TorrentDashboard {
                     <td>
                         <button class="btn btn-ghost btn-xs text-error"
                                 title="Delete Torrent"
-                                onclick="window.dashboard.deleteTorrent('${torrent.info_hash}', '${this.escapeAttr(torrent.category || '')}', false);">
+                                data-action="delete" data-hash="${hash}" data-category="${category}">
                             <i class="bi bi-trash"></i>
                         </button>
                         <button class="btn btn-ghost btn-xs text-error"
                                 title="Delete from Provider"
-                                onclick="window.dashboard.deleteTorrent('${torrent.info_hash}', '${this.escapeAttr(torrent.category || '')}', true);">
+                                data-action="delete-debrid" data-hash="${hash}" data-category="${category}">
                             <i class="bi bi-cloud-slash"></i>
                         </button>
                     </td>
@@ -357,7 +373,7 @@ class TorrentDashboard {
         };
 
         const s = stateMap[state] || {class: 'badge-ghost', text: state};
-        return `<span class="badge ${s.class} badge-sm">${s.text}</span>`;
+        return `<span class="badge ${s.class} badge-sm">${this.escapeHtml(s.text)}</span>`;
     }
 
     renderProtocolBadge(protocol) {
@@ -371,7 +387,7 @@ class TorrentDashboard {
             icon: 'bi-question-circle',
             text: protocol || 'Unknown'
         };
-        return `<span class="badge ${p.class} badge-sm"><i class="${p.icon} mr-1"></i>${p.text}</span>`;
+        return `<span class="badge ${p.class} badge-sm"><i class="${p.icon} mr-1"></i>${this.escapeHtml(p.text)}</span>`;
     }
 
     renderPagination() {
@@ -390,7 +406,7 @@ class TorrentDashboard {
 
         let html = `
             <button class="join-item btn btn-sm ${this.state.currentPage === 1 ? 'btn-disabled' : ''}"
-                    onclick="window.dashboard.goToPage(${this.state.currentPage - 1});">«</button>
+                    data-page="${this.state.currentPage - 1}">«</button>
         `;
 
         for (let i = 1; i <= this.state.totalPages; i++) {
@@ -398,7 +414,7 @@ class TorrentDashboard {
                 (i >= this.state.currentPage - 2 && i <= this.state.currentPage + 2)) {
                 html += `
                     <button class="join-item btn btn-sm ${i === this.state.currentPage ? 'btn-active' : ''}"
-                            onclick="window.dashboard.goToPage(${i});">${i}</button>
+                            data-page="${i}">${i}</button>
                 `;
             } else if (i === this.state.currentPage - 3 || i === this.state.currentPage + 3) {
                 html += `<button class="join-item btn btn-sm btn-disabled">...</button>`;
@@ -407,7 +423,7 @@ class TorrentDashboard {
 
         html += `
             <button class="join-item btn btn-sm ${this.state.currentPage === this.state.totalPages ? 'btn-disabled' : ''}"
-                    onclick="window.dashboard.goToPage(${this.state.currentPage + 1})">»</button>
+                    data-page="${this.state.currentPage + 1}">»</button>
         `;
 
         this.refs.paginationControls.innerHTML = html;
@@ -514,14 +530,20 @@ class TorrentDashboard {
     }
 
     escapeHtml(text) {
-        if (!text) return '';
+        if (text === null || text === undefined) return '';
         const div = document.createElement('div');
-        div.textContent = text;
+        div.textContent = String(text);
         return div.innerHTML;
     }
 
+    // For quoted attribute values; escapeHtml leaves quotes alone.
     escapeAttr(text) {
-        if (!text) return '';
-        return text.replace(/'/g, '&#39;').replace(/"/g, '&quot;');
+        if (text === null || text === undefined) return '';
+        return String(text)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
     }
 }

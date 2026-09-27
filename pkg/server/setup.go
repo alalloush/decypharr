@@ -1,6 +1,7 @@
 package server
 
 import (
+	"cmp"
 	"fmt"
 	"net/http"
 	"os"
@@ -49,7 +50,7 @@ func (s *Server) SetupHandler(w http.ResponseWriter, r *http.Request) {
 	cfg := config.Get()
 
 	if err := cfg.SetupComplete(); err == nil {
-		http.Redirect(w, r, "/", http.StatusSeeOther)
+		s.redirectTo(w, r, "/")
 		return
 	}
 	data := map[string]any{
@@ -57,7 +58,7 @@ func (s *Server) SetupHandler(w http.ResponseWriter, r *http.Request) {
 		"Page":    "setup",
 		"Title":   "Setup Wizard",
 	}
-	err := s.templates.ExecuteTemplate(w, "setup_layout", data)
+	err := s.render(w, "setup_layout", data)
 	if err != nil {
 		s.logger.Error().Err(err).Msg("template error")
 	}
@@ -152,11 +153,22 @@ func (s *Server) setupCompleteHandler(w http.ResponseWriter, r *http.Request) {
 				return fmt.Errorf("Invalid debrid provider")
 			}
 
+			// The wizard pre-fills the key from GET /api/config, which sends
+			// the placeholder for a stored one.
+			apiKey := req.Debrid.APIKey
+			if apiKey == secretPlaceholder {
+				if len(cfg.Debrids) == 0 || cfg.Debrids[0].APIKey == "" ||
+					cmp.Or(cfg.Debrids[0].Provider, cfg.Debrids[0].Name) != req.Debrid.Provider {
+					return fmt.Errorf("enter the debrid API key again")
+				}
+				apiKey = cfg.Debrids[0].APIKey
+			}
+
 			debrid := config.Debrid{
 				Provider:         req.Debrid.Provider,
 				Name:             req.Debrid.Provider,
-				APIKey:           req.Debrid.APIKey,
-				DownloadAPIKeys:  []string{req.Debrid.APIKey},
+				APIKey:           apiKey,
+				DownloadAPIKeys:  []string{apiKey},
 				DownloadUncached: false,
 				RateLimit:        config.DefaultRateLimit,
 			}
@@ -257,6 +269,9 @@ func (s *Server) setupCompleteHandler(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
+		if err := placeholderLeft(cfg); err != nil {
+			return err
+		}
 		if err := cfg.SetupComplete(); err != nil {
 			return err
 		}

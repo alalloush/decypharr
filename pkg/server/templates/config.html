@@ -133,7 +133,7 @@
                                         <span class="font-medium">Magnet Link Handler</span>
                                     </label>
                                     <button type="button" class="btn btn-primary w-full"
-                                            onclick="registerMagnetLinkHandler();" id="registerMagnetLink">
+                                            id="registerMagnetLink">
                                         <i class="bi bi-magnet mr-2"></i>Register Magnet Handler
                                     </button>
                                 </div>
@@ -414,8 +414,7 @@
                             <h4 class="font-semibold text-base">Web Authentication</h4>
                             <div>
                                 <label class="label cursor-pointer justify-start gap-3">
-                                    <input type="checkbox" class="checkbox checkbox-primary" id="auth-token-only"
-                                           onchange="toggleTokenOnly();">
+                                    <input type="checkbox" class="checkbox checkbox-primary" id="auth-token-only">
                                     <div>
                                         <span class="label-text font-medium">Token-only authentication</span>
                                         <div class="label-text-alt">No username or password. The API token below
@@ -467,13 +466,11 @@
                                         <input type="text" id="api-token-display"
                                                class="input join-item flex-1 font-mono" placeholder="No token generated"
                                                readonly>
-                                        <button type="button" id="copy-token-btn" class="btn btn-outline join-item"
-                                                onclick="copyAPIToken();">
+                                        <button type="button" id="copy-token-btn" class="btn btn-outline join-item">
                                             <i class="bi bi-copy"></i>
                                         </button>
                                         <button type="button" id="refresh-token-btn"
-                                                class="btn btn-outline btn-secondary join-item"
-                                                onclick="refreshAPIToken();">
+                                                class="btn btn-outline btn-secondary join-item">
                                             <i class="bi bi-arrow-clockwise"></i>
                                         </button>
                                     </div>
@@ -482,8 +479,7 @@
                                 </div>
                             </div>
                             <div class="flex justify-end items-center mt-5">
-                                <button type="button" id="update-auth-btn" class="btn btn-primary"
-                                        onclick="updateAuthSettings();">
+                                <button type="button" id="update-auth-btn" class="btn btn-primary">
                                     <i class="bi bi-shield-check mr-2"></i>Update Authentication
                                 </button>
                             </div>
@@ -1939,7 +1935,7 @@ fe80::/10</textarea>
     </div>
 </div>
 
-<script>
+<script nonce="{{.CSPNonce}}">
     function revealSettingsTab(button) {
         const scroller = button?.closest('nav')?.parentElement;
         if (!scroller || scroller.scrollWidth <= scroller.clientWidth) return;
@@ -2279,5 +2275,14 @@ fe80::/10</textarea>
             window.decypharrUtils.setButtonLoading(updateBtn, false);
         }
     }
+
+    // The CSP blocks inline event handler attributes, so bind them here.
+    document.addEventListener('DOMContentLoaded', function () {
+        document.getElementById('registerMagnetLink')?.addEventListener('click', () => registerMagnetLinkHandler());
+        document.getElementById('auth-token-only')?.addEventListener('change', () => toggleTokenOnly());
+        document.getElementById('copy-token-btn')?.addEventListener('click', () => copyAPIToken());
+        document.getElementById('refresh-token-btn')?.addEventListener('click', () => refreshAPIToken());
+        document.getElementById('update-auth-btn')?.addEventListener('click', () => updateAuthSettings());
+    });
 </script>
 {{ end }}

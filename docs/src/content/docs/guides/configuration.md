@@ -19,7 +19,7 @@ Configuration is stored in `config.json`. Most settings can be managed via the W
 
 | Field          | Type   | Description                                      | Default       |
 |----------------|--------|--------------------------------------------------|---------------|
-| `bind_address` | string | IP to bind to                                    | `0.0.0.0`     |
+| `bind_address` | string | IP to bind to (IPv6 without brackets: `::1`)     | `0.0.0.0`     |
 | `port`         | string | Port to listen on                                | `8282`        |
 | `url_base`     | string | Base path for reverse proxy                      | `""`          |
 | `app_url`      | string | External URL for callbacks                       | Auto-detected |
@@ -54,8 +54,8 @@ In this mode there is no username and no password. Use these rules:
 - Send the token in the `Authorization` header for API requests.
 - Type the token in the password box to log in to the web interface.
 - Give the token to Sonarr or Radarr as the download client password.
-- Keep WebDAV authentication off. WebDAV accepts only a username and a
-  password. It always rejects the API token.
+- Give the token to WebDAV clients as the password (any username), or as a bearer
+  token. See [WebDAV authentication](../shares/webdav/#authentication).
 
 Registration stays closed in this mode. If you lose the token, edit
 `auth.json` to set a new one.
@@ -68,6 +68,51 @@ variables:
 | `USE_AUTH`        | Set to `true` to enable auth.     |
 | `AUTH_TOKEN_ONLY` | Set to `true` for token-only auth.|
 | `API_TOKEN`       | Set the token to a known value.   |
+
+### Session cookie
+
+The login session lasts seven days. Its cookie is `HttpOnly` and `SameSite=Lax`, and it is marked `Secure` when the
+browser reached Decypharr over HTTPS: directly, or through a reverse proxy that sends `X-Forwarded-Proto: https`.
+Over plain HTTP on the LAN the cookie is not `Secure`, so it still works there.
+
+## Web UI security
+
+### Content Security Policy
+
+Every page carries a `Content-Security-Policy` header. Scripts run only from Decypharr's own origin (its `/assets`)
+or from the page's inline blocks, which carry a per-request nonce; inline event handlers, `javascript:` URLs and
+injected `<script>` tags do not run. The policy also sets `object-src 'none'`, and limits `base-uri`, `form-action`,
+images, fonts and `fetch` requests to Decypharr's own origin (images and fonts may also be `data:` URLs). Inline
+style attributes are allowed. `frame-ancestors` is not set, so dashboards such as Organizr or Homarr can still
+embed the UI.
+
+If a reverse proxy adds its own `Content-Security-Policy`, browsers enforce both, and a proxy policy that does not
+allow these scripts breaks the UI.
+
+### Stored credentials
+
+`GET /api/config`, which the settings page reads, never returns a stored credential. Each one is replaced by
+`********`:
+
+| Where                         | Fields                                     |
+|-------------------------------|--------------------------------------------|
+| Top level                     | `discord_webhook_url`                      |
+| `debrids[]`                   | `api_key`, `download_api_keys`, `rc_pass`  |
+| `arrs[]`                      | `token`                                    |
+| `usenet.providers[]`          | `password`                                 |
+| `mount.external_rclone`       | `rc_password`                              |
+| `notifications`               | `webhook_url`                              |
+| `smb`                         | `password`                                 |
+| `strm`                        | `secret`                                   |
+
+`session_secret` is left out of the response entirely. The web UI username and API token are still returned, so the
+settings page can show them.
+
+On the settings page a credential field shows `********`. Leave it to keep the stored value, type a new value to
+replace it, or empty it to clear it. A saved credential cannot be sent somewhere new without typing it again: if you
+change a debrid provider's `provider`, `api_host` or `proxy`, an Arr's `host`, or the external rclone `rc_url`, the
+save is refused until you enter that credential again. See [`POST /api/config`](../../reference/api/#post-apiconfig)
+for the rules API clients follow.
 
 ## Downloads
 

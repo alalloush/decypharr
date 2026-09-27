@@ -28,12 +28,17 @@ const (
 type Handler struct {
 	logger  *logger.RateLimitedLogger
 	manager *manager.Manager
+	logins  loginCache
 }
 
 func NewHandler(mgr *manager.Manager) *Handler {
-	log := logger.NewRateLimitedLogger(logger.WithLogger(logger.New("webdav")))
+	base := logger.New("webdav")
+	if cfg := config.Get(); !cfg.DisableWebDav {
+		base.Info().Bool("use_auth", cfg.UseAuth).Bool("webdav_allow_delete", cfg.WebdavAllowDelete).
+			Msg("WebDAV needs the UI login or API token while use_auth is on, and refuses DELETE unless webdav_allow_delete is set")
+	}
 	h := &Handler{
-		logger:  log,
+		logger:  logger.NewRateLimitedLogger(logger.WithLogger(base)),
 		manager: mgr,
 	}
 	return h
@@ -54,13 +59,18 @@ func (h *Handler) readinessMiddleware(next http.Handler) http.Handler {
 }
 
 func (h *Handler) Routes() chi.Router {
+	return h.routes(h.readinessMiddleware)
+}
+
+// routes builds the WebDAV router behind the given middlewares.
+func (h *Handler) routes(before ...func(http.Handler) http.Handler) chi.Router {
 	r := chi.NewRouter()
-	r.Use(h.readinessMiddleware)
+	r.Use(before...)
 	r.Use(h.commonMiddleware)
 	r.Use(middleware.AllowContentEncoding("gzip"))
 	// Always install the auth middleware; whether it actually enforces auth is
-	// decided live per-request from config, so toggling UseAuth/EnableWebdavAuth
-	// takes effect without rebuilding the router (no restart).
+	// decided live per-request from config, so toggling use_auth takes effect
+	// without rebuilding the router (no restart).
 	r.Use(h.authMiddleware)
 
 	r.HandleFunc("/", h.handleRoot)
@@ -87,15 +97,15 @@ func (h *Handler) handler(current *manager.FileInfo, children []manager.FileInfo
 		}
 		h.handleGet(current, w, r)
 	case "DELETE":
+		if !config.Get().WebdavAllowDelete {
+			http.Error(w, "Forbidden: WebDAV is read-only. A delete removes the torrent from the debrid provider; set webdav_allow_delete to allow it.", http.StatusForbidden)
+			return
+		}
 		h.handleDelete(current, w, r)
 	case PROPFIND:
 		h.handlePropfind(current, children, w, r)
-	case "COPY":
-		h.handleCopy(current, w, r, false)
 	case "OPTIONS":
 		h.handleOptions(w, r)
-	case "MOVE":
-		h.handleCopy(current, w, r, true)
 	default:
 		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
 		return
@@ -137,32 +147,18 @@ func (h *Handler) handleTorrentFile(w http.ResponseWriter, r *http.Request) {
 	h.handler(currentInfo, nil, w, r)
 }
 
+// commonMiddleware advertises what the server implements. It sends no CORS
+// headers: WebDAV clients are not web pages, and allowing every origin let
+// any page a LAN user opened list the library and delete from it. COPY and
+// MOVE are never listed: the tree mirrors the debrid accounts, so there is
+// nowhere to put a copy and nothing to rename, and they get 405.
 func (h *Handler) commonMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("DAV", "1, 2")
-		w.Header().Set("Allow", "OPTIONS, PROPFIND GET, HEAD, POST, PUT, DELETE, MKCOL, PROPPATCH, COPY, MOVE, LOCK, UNLOCK")
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "OPTIONS, GET, PROPFIND, HEAD, POST, PUT, DELETE, MKCOL, PROPPATCH, COPY, MOVE, LOCK, UNLOCK")
-		w.Header().Set("Access-Control-Allow-Headers", "Depth, Content-Type, Authorization")
-
-		next.ServeHTTP(w, r)
-	})
-}
-
-func (h *Handler) authMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Read the auth toggles live so changes apply without a restart.
-		cfg := config.Get()
-		if !cfg.UseAuth || !cfg.EnableWebdavAuth {
-			next.ServeHTTP(w, r)
-			return
-		}
-
-		username, password, ok := r.BasicAuth()
-		if !ok || !config.VerifyAuth(username, password) {
-			w.Header().Set("WWW-Authenticate", `Basic realm="Restricted"`)
-			http.Error(w, "Unauthorized", http.StatusUnauthorized)
-			return
+		if config.Get().WebdavAllowDelete {
+			w.Header().Set("Allow", "OPTIONS, GET, HEAD, PROPFIND, DELETE")
+		} else {
+			w.Header().Set("Allow", "OPTIONS, GET, HEAD, PROPFIND")
 		}
 		next.ServeHTTP(w, r)
 	})

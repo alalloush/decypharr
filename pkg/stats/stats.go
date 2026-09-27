@@ -26,6 +26,9 @@ type Collector struct {
 
 	mu       sync.RWMutex
 	snapshot *Snapshot
+	// ready is closed once the first snapshot is stored.
+	ready     chan struct{}
+	readyOnce sync.Once
 
 	// Cached debrid profiles with TTL
 	profileMu      sync.RWMutex
@@ -36,20 +39,22 @@ type Collector struct {
 	cancel context.CancelFunc
 }
 
-// New creates a Collector and starts the background refresh goroutine.
+// New creates a Collector. It collects nothing itself: a snapshot asks every
+// provider for its profile, which takes seconds when a provider is down (and
+// minutes when its host drops packets), and New runs while the HTTP server
+// is being built. Start takes the first snapshot in the background.
 func New(mgr *manager.Manager) *Collector {
-	c := &Collector{
+	return &Collector{
 		mgr:          mgr,
 		logger:       logger.New("stats"),
+		ready:        make(chan struct{}),
 		profileCache: make(map[string]*debridTypes.Profile),
 		profileTTL:   60 * time.Second,
 	}
-	// Build an initial snapshot synchronously so the first request is served immediately.
-	c.snapshot = c.collect()
-	return c
 }
 
-// Start begins the background refresh loop. Call from server startup.
+// Start takes the first snapshot and then refreshes it every 5 seconds, in
+// the background. Call from server startup.
 func (c *Collector) Start(ctx context.Context) {
 	ctx, c.cancel = context.WithCancel(ctx)
 	go c.loop(ctx)
@@ -62,7 +67,8 @@ func (c *Collector) Stop() {
 	}
 }
 
-// Snapshot returns the latest cached snapshot (zero-alloc per call).
+// Snapshot returns the latest cached snapshot (zero-alloc per call), or nil
+// before the first one.
 func (c *Collector) Snapshot() *Snapshot {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -75,19 +81,26 @@ func (c *Collector) Refresh() *Snapshot {
 	c.mu.Lock()
 	c.snapshot = snap
 	c.mu.Unlock()
+	c.readyOnce.Do(func() { close(c.ready) })
 	return snap
 }
 
 // Handler returns an http.HandlerFunc that serves the cached snapshot as JSON.
+// A request that arrives before the first snapshot waits for it.
 func (c *Collector) Handler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		snap := c.Snapshot()
-		utils.JSONResponse(w, snap, http.StatusOK)
+		select {
+		case <-c.ready:
+		case <-r.Context().Done():
+			return
+		}
+		utils.JSONResponse(w, c.Snapshot(), http.StatusOK)
 	}
 }
 
-// loop refreshes the snapshot on a timer.
+// loop takes the first snapshot, then refreshes it on a timer.
 func (c *Collector) loop(ctx context.Context) {
+	c.Refresh()
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
 	for {
@@ -95,10 +108,7 @@ func (c *Collector) loop(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			snap := c.collect()
-			c.mu.Lock()
-			c.snapshot = snap
-			c.mu.Unlock()
+			c.Refresh()
 		}
 	}
 }
@@ -308,7 +318,7 @@ func collectAccess(cfg *config.Config) AccessStats {
 			Enabled:      !cfg.DisableWebDav,
 			Path:         webdavPath,
 			Port:         cfg.Port,
-			AuthRequired: cfg.UseAuth && cfg.EnableWebdavAuth,
+			AuthRequired: cfg.UseAuth,
 		},
 		NFS: NFSAccess{
 			Enabled: cfg.NFS.Enabled,

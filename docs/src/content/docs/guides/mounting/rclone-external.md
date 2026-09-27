@@ -60,6 +60,10 @@ rclone config create decypharr webdav \
   pass=PASS
 ```
 
+While `use_auth` is on, WebDAV needs credentials: `USER` and `PASS` are the web UI login. In token-only mode, pass
+the API token as `pass` with any `user`, or set `bearer_token=TOKEN` instead of both. See
+[WebDAV authentication](../../shares/webdav/#authentication).
+
 Then mount the remote:
 
 ```bash

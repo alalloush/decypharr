@@ -488,7 +488,7 @@
     </form>
 </dialog>
 
-<script>
+<script nonce="{{.CSPNonce}}">
     document.addEventListener('DOMContentLoaded', function () {
         const loadingEl = document.getElementById('loading-stats');
         const contentEl = document.getElementById('stats-content');
@@ -520,9 +520,13 @@
             });
         });
 
+        // Numbers from the stats API are rendered into markup: coerce them.
         function formatNumber(num) {
-            return num.toLocaleString();
+            return Number(num).toLocaleString();
         }
+
+        // Escapes API strings for markup and quoted attribute values.
+        const esc = (value) => window.decypharrUtils.escapeHtml(value);
 
         function showError(message) {
             loadingEl.style.display = 'none';
@@ -693,9 +697,9 @@
                         <button type="button"
                                 class="btn btn-outline btn-sm mount-cache-action-btn"
                                 data-purge-cache
-                                data-cache-items="${cacheItems}"
-                                data-cache-size="${cacheTotalSize}"
-                                data-cache-max="${cacheMaxSize}">
+                                data-cache-items="${esc(cacheItems)}"
+                                data-cache-size="${esc(cacheTotalSize)}"
+                                data-cache-max="${esc(cacheMaxSize)}">
                             <i class="bi bi-trash3"></i>
                             Purge Cache
                         </button>
@@ -724,7 +728,7 @@
                         </div>
                         <div class="stat-title">Loaded Cache Items</div>
                         <div class="stat-value mount-stat-value-compact text-accent">${formatNumber(activeCacheItems)}</div>
-                        <div class="stat-desc">Resident in ${cacheType} memory</div>
+                        <div class="stat-desc">Resident in ${esc(cacheType)} memory</div>
                     </div>
                     <div class="stat">
                         <div class="stat-figure ${cacheHealthClass}">
@@ -880,8 +884,8 @@
                 html += `
                     <div class="stat">
                         <div class="stat-title">Rclone Version</div>
-                        <div class="stat-value text-sm">${rclone.version.version || 'Unknown'}</div>
-                        <div class="stat-desc">${rclone.version.arch || ''} ${rclone.version.os || ''}</div>
+                        <div class="stat-value text-sm">${esc(rclone.version.version || 'Unknown')}</div>
+                        <div class="stat-desc">${esc(rclone.version.arch || '')} ${esc(rclone.version.os || '')}</div>
                     </div>
                 `;
             }
@@ -897,13 +901,13 @@
                     </div>
                     <div class="stat">
                         <div class="stat-title">Transfers</div>
-                        <div class="stat-value text-info">${cs.transfers || 0}</div>
-                        <div class="stat-desc">Errors: ${cs.errors || 0}</div>
+                        <div class="stat-value text-info">${esc(cs.transfers || 0)}</div>
+                        <div class="stat-desc">Errors: ${esc(cs.errors || 0)}</div>
                     </div>
                     <div class="stat">
                         <div class="stat-title">Checks</div>
-                        <div class="stat-value text-secondary">${cs.checks || 0}</div>
-                        <div class="stat-desc">Total: ${cs.totalChecks || 0}</div>
+                        <div class="stat-value text-secondary">${esc(cs.checks || 0)}</div>
+                        <div class="stat-desc">Total: ${esc(cs.totalChecks || 0)}</div>
                     </div>
                     <div class="stat">
                         <div class="stat-title">Uptime</div>
@@ -943,7 +947,7 @@
                         <div class="card bg-base-200 compact">
                             <div class="card-body">
                                 <div class="flex justify-between items-start mb-2">
-                                    <h4 class="font-medium text-sm truncate flex-1 mr-2">${transfer.name || 'Unknown'}</h4>
+                                    <h4 class="font-medium text-sm truncate flex-1 mr-2">${esc(transfer.name || 'Unknown')}</h4>
                                     <span class="text-xs text-base-content/70">${window.decypharrUtils.formatBytes(transfer.speed || 0)}/s</span>
                                 </div>
                                 <div class="flex items-center gap-2">
@@ -1016,7 +1020,7 @@
                 const sourceBadge = stream.source === 'nzb'
                     ? '<span class="badge badge-accent badge-xs">NZB</span>'
                     : '<span class="badge badge-secondary badge-xs">Torrent</span>';
-                const debridInfo = stream.debrid ? `<span class="text-xs text-base-content/60">${stream.debrid}</span>` : '';
+                const debridInfo = stream.debrid ? `<span class="text-xs text-base-content/60">${esc(stream.debrid)}</span>` : '';
 
                 // Format client info - truncate long user agents
                 let clientDisplay = '';
@@ -1028,7 +1032,7 @@
                         const match = clientText.match(/^([^\s\/]+(?:\/[\d.]+)?)/);
                         clientText = match ? match[1] : clientText.substring(0, 30) + '...';
                     }
-                    clientDisplay = `<span class="badge badge-ghost badge-xs" title="${stream.client}">${clientText}</span>`;
+                    clientDisplay = `<span class="badge badge-ghost badge-xs" title="${esc(stream.client)}">${esc(clientText)}</span>`;
                 }
 
                 html += `
@@ -1041,8 +1045,8 @@
                                         ${debridInfo}
                                         ${clientDisplay}
                                     </div>
-                                    <h4 class="font-medium text-sm truncate" title="${stream.entry_name}">${stream.entry_name}</h4>
-                                    <p class="text-xs text-base-content/70 truncate" title="${stream.file_name}">${stream.file_name}</p>
+                                    <h4 class="font-medium text-sm truncate" title="${esc(stream.entry_name)}">${esc(stream.entry_name)}</h4>
+                                    <p class="text-xs text-base-content/70 truncate" title="${esc(stream.file_name)}">${esc(stream.file_name)}</p>
                                 </div>
                                 <div class="text-right flex-shrink-0 ml-2">
                                     <div class="text-sm font-mono">${window.decypharrUtils.formatBytes(stream.file_size)}</div>
@@ -1083,7 +1087,7 @@
                     debridSpeedResultHtml = `
                         <div class="flex items-center gap-2 text-success">
                             <i class="bi bi-check-circle"></i>
-                            ${latency ? `<span><strong>${latency}</strong> latency</span>` : ''}
+                            ${latency ? `<span><strong>${esc(latency)}</strong> latency</span>` : ''}
                             ${speedMbps ? `<span><strong>${speedMbps} Mbps</strong></span>` : ''}
                         </div>
                         <div class="text-xs text-base-content/50">Tested: ${testedAt}</div>
@@ -1091,28 +1095,27 @@
                 }
 
                 html += `
-                    <div class="card bg-base-200" id="debrid-card-${profile.name.replace(/\s+/g, '-')}">
+                    <div class="card bg-base-200" id="debrid-card-${esc(profile.name.replace(/\s+/g, '-'))}">
                         <div class="card-body p-4">
                             <div class="flex flex-col items-start gap-3 sm:flex-row sm:justify-between">
                                 <div>
                                     <div class="flex items-center gap-2">
-                                        <h3 class="card-title text-lg">${profile.name || 'Unknown Service'}</h3>
+                                        <h3 class="card-title text-lg">${esc(profile.name || 'Unknown Service')}</h3>
                                         <span class="badge badge-secondary badge-sm">Debrid</span>
                                     </div>
-                                    <p class="text-sm text-base-content/70">${profile.username || 'No username'}</p>
+                                    <p class="text-sm text-base-content/70">${esc(profile.username || 'No username')}</p>
                                 </div>
                                 <div class="text-left sm:text-right">
                                     <div class="flex flex-wrap items-center gap-2 sm:justify-end">
                                         <button
                                             class="btn btn-xs btn-ghost debrid-speed-test-btn"
-                                            data-provider="${profile.name}"
-                                            onclick="runDebridSpeedTest('${profile.name}');">
+                                            data-provider="${esc(profile.name)}">
                                             Test Speed
                                         </button>
                                         <div class="text-sm font-mono">${formatNumber(profile.points || 0)} points</div>
                                     </div>
-                                    <div id="debrid-speed-result-${profile.name.replace(/\s+/g, '-')}" class="text-xs mt-1">${debridSpeedResultHtml}</div>
-                                    <div class="text-xs text-base-content/70">Type: ${profile.type || 'Unknown'}</div>
+                                    <div id="debrid-speed-result-${esc(profile.name.replace(/\s+/g, '-'))}" class="text-xs mt-1">${debridSpeedResultHtml}</div>
+                                    <div class="text-xs text-base-content/70">Type: ${esc(profile.type || 'Unknown')}</div>
                                     <div class="text-xs text-base-content/70">Expires: ${profile.expiration ? new Date(profile.expiration).toLocaleDateString() : 'Unknown'}</div>
                                 </div>
                             </div>
@@ -1131,7 +1134,7 @@
                                 </div>
                                 <div class="stat">
                                     <div class="stat-title text-xs">Total Accounts</div>
-                                    <div class="stat-value text-sm text-info">${accounts.length}</div>
+                                    <div class="stat-value text-sm text-info">${esc(accounts.length)}</div>
                                 </div>
                             </div>
                 `;
@@ -1161,11 +1164,11 @@
                                     <div class="flex justify-between items-start">
                                         <div class="flex-1">
                                             <div class="flex items-center gap-1">
-                                                <h5 class="font-medium text-xs">Account #${account.order + 1}</h5>
+                                                <h5 class="font-medium text-xs">Account #${esc(account.order + 1)}</h5>
                                                 ${statusBadge}
                                                 ${inUseBadge}
                                             </div>
-                                            <p class="text-xs text-base-content/70">${account.username || '-'}</p>
+                                            <p class="text-xs text-base-content/70">${esc(account.username || '-')}</p>
                                         </div>
                                         <div class="text-right flex-shrink-0 ml-2">
                                             <div class="text-xs text-base-content/60">Daily Usage: ${window.decypharrUtils.formatBytes(account.traffic_used || 0)}</div>
@@ -1225,7 +1228,7 @@
                                     <h3 class="card-title text-lg">Usenet</h3>
                                     <span class="badge badge-accent badge-sm">NNTP</span>
                                 </div>
-                                <p class="text-sm text-base-content/70">${nntpProviders.length} server(s) configured</p>
+                                <p class="text-sm text-base-content/70">${esc(nntpProviders.length)} server(s) configured</p>
                             </div>
                             <div class="text-left sm:text-right">
                                 <div class="text-sm text-base-content/70">${formatNumber(totalCreated)} / ${formatNumber(maxConns)} connections</div>
@@ -1250,11 +1253,11 @@
                             <div class="flex gap-4 mt-2 text-xs flex-wrap">
                                 <span class="flex items-center gap-1">
                                     <span class="w-2 h-2 bg-success rounded"></span>
-                                    Active: ${active}
+                                    Active: ${esc(active)}
                                 </span>
                                 <span class="flex items-center gap-1">
                                     <span class="w-2 h-2 bg-primary/80 rounded"></span>
-                                    Idle: ${idle}
+                                    Idle: ${esc(idle)}
                                 </span>
                             </div>
                         </div>
@@ -1291,7 +1294,7 @@
                         const speedStr = speedTest.speed_mbps > 0
                             ? `${speedTest.speed_mbps.toFixed(1)} MB/s`
                             : `${speedTest.latency_ms}ms`;
-                        speedResultHtml = `<span class="text-success text-xs"><i class="bi bi-check-circle"></i> ${speedStr}</span>`;
+                        speedResultHtml = `<span class="text-success text-xs"><i class="bi bi-check-circle"></i> ${esc(speedStr)}</span>`;
                     }
                 }
 
@@ -1301,18 +1304,17 @@
                             <div class="flex justify-between items-start">
                                 <div>
                                     <div class="flex items-center gap-1">
-                                        <span class="font-medium text-xs">${provider.host}</span>
+                                        <span class="font-medium text-xs">${esc(provider.host)}</span>
                                         <span class="badge ${provider.ssl ? 'badge-success' : 'badge-warning'} badge-xs">${provider.ssl ? 'SSL' : 'Plain'}</span>
                                     </div>
-                                    <p class="text-xs text-base-content/70">${provider.username ? provider.username + ' · ' : ''}${providerMaxConns} connections</p>
+                                    <p class="text-xs text-base-content/70">${provider.username ? esc(provider.username) + ' · ' : ''}${providerMaxConns} connections</p>
                                 </div>
                                 <div class="flex flex-col items-end gap-1">
                                     ${speedResultHtml}
                                     <button
                                         class="btn btn-xs btn-ghost speed-test-btn"
-                                        data-provider="${provider.id || provider.host}"
-                                        title="Run Speed Test"
-                                        onclick="runSpeedTest('${provider.id || provider.host}');">
+                                        data-provider="${esc(provider.id || provider.host)}"
+                                        title="Run Speed Test">
                                         Test Speed
                                     </button>
                                 </div>
@@ -1464,14 +1466,13 @@
         }
 
         function connectRow(label, value) {
-            const safe = String(value).replace(/"/g, '&quot;');
             return `
                 <div>
                     <div class="text-xs text-base-content/60">${label}</div>
                     <div class="flex items-center gap-2">
-                        <code class="flex-1 break-all bg-base-200 rounded px-2 py-1 text-xs">${value}</code>
+                        <code class="flex-1 break-all bg-base-200 rounded px-2 py-1 text-xs">${esc(value)}</code>
                         <button class="btn btn-ghost btn-xs" title="Copy"
-                                onclick="copyText(this, &quot;${safe}&quot;)"><i class="bi bi-clipboard"></i></button>
+                                data-copy-text="${esc(value)}"><i class="bi bi-clipboard"></i></button>
                     </div>
                 </div>`;
         }
@@ -1513,7 +1514,7 @@
                 let html = connectRow('Linux', `sudo mount -t nfs -o ${opts} ${host}:/ /mnt/decypharr`);
                 html += connectRow('macOS', `sudo mount -t nfs -o ${opts},resvport ${host}:/ /Volumes/decypharr`);
                 html += `<p class="text-xs text-base-content/60">Read-only. Behind Docker or NAT, use the host port
-                    that maps to ${port}. On macOS the mountpoint must exist first
+                    that maps to ${esc(port)}. On macOS the mountpoint must exist first
                     (<code>sudo mkdir -p /Volumes/decypharr</code>).</p>`;
                 nfsDetails.innerHTML = html;
             } else {
@@ -1536,7 +1537,7 @@
                 html += connectRow('macOS', `open smb://${user}@${host}:${port}/${share}`);
                 html += connectRow('Linux', `sudo mount -t cifs -o vers=3.1.1,port=${port},user=${user},ro //${host}/${share} /mnt/decypharr`);
                 html += `<p class="text-xs text-base-content/60">Read-only, signed but not encrypted — trusted
-                    networks only. Windows connects to port 445 only: map the host's 445 to ${port}.</p>`;
+                    networks only. Windows connects to port 445 only: map the host's 445 to ${esc(port)}.</p>`;
                 smbDetails.innerHTML = html;
             } else {
                 smbStatus.textContent = 'Disabled';
@@ -1598,19 +1599,19 @@
                 const result = await response.json();
 
                 if (result.error) {
-                    resultDiv.innerHTML = `<span class="text-error"><i class="bi bi-x-circle"></i> ${result.error}</span>`;
+                    resultDiv.innerHTML = `<span class="text-error"><i class="bi bi-x-circle"></i> ${esc(result.error)}</span>`;
                 } else {
                     const testedAt = result.tested_at ? new Date(result.tested_at).toLocaleTimeString() : '';
                     resultDiv.innerHTML = `
                         <div class="flex items-center gap-2">
                             <i class="bi bi-check-circle text-success"></i>
-                            <span><strong>${result.latency_ms || 0}ms</strong> latency</span>
+                            <span><strong>${esc(result.latency_ms || 0)}ms</strong> latency</span>
                         </div>
                         <div class="text-xs text-base-content/50 mt-1">Tested: ${testedAt}</div>
                     `;
                 }
             } catch (error) {
-                resultDiv.innerHTML = `<span class="text-error"><i class="bi bi-x-circle"></i> ${error.message}</span>`;
+                resultDiv.innerHTML = `<span class="text-error"><i class="bi bi-x-circle"></i> ${esc(error.message)}</span>`;
             } finally {
                 button.disabled = false;
                 button.innerHTML = 'Test Speed';
@@ -1644,7 +1645,7 @@
                 const result = await response.json();
 
                 if (result.error) {
-                    resultDiv.innerHTML = `<span class="text-error"><i class="bi bi-x-circle"></i> ${result.error}</span>`;
+                    resultDiv.innerHTML = `<span class="text-error"><i class="bi bi-x-circle"></i> ${esc(result.error)}</span>`;
                 } else {
                     const testedAt = result.tested_at ? new Date(result.tested_at).toLocaleTimeString() : '';
                     // Convert MB/s to Mbps (multiply by 8)
@@ -1654,14 +1655,14 @@
                     resultDiv.innerHTML = `
                         <div class="flex items-center gap-2 text-success">
                             <i class="bi bi-check-circle"></i>
-                            ${latencyDisplay ? `<span><strong>${latencyDisplay}</strong> latency</span>` : ''}
+                            ${latencyDisplay ? `<span><strong>${esc(latencyDisplay)}</strong> latency</span>` : ''}
                             ${speedMbps ? `<span><strong>${speedMbps} Mbps</strong></span>` : ''}
                         </div>
                         <div class="text-xs text-base-content/50">Tested: ${testedAt}</div>
                     `;
                 }
             } catch (error) {
-                resultDiv.innerHTML = `<span class="text-error"><i class="bi bi-x-circle"></i> ${error.message}</span>`;
+                resultDiv.innerHTML = `<span class="text-error"><i class="bi bi-x-circle"></i> ${esc(error.message)}</span>`;
             } finally {
                 button.disabled = false;
                 button.innerHTML = 'Test Speed';
@@ -1671,6 +1672,20 @@
         // Event listeners
         refreshBtn.addEventListener('click', loadStats);
         retryBtn.addEventListener('click', loadStats);
+
+        // Speed test and copy buttons are rendered as markup with data
+        // attributes; inline handlers are blocked by the CSP.
+        contentEl.addEventListener('click', (event) => {
+            const button = event.target.closest('button');
+            if (!button) return;
+            if (button.classList.contains('speed-test-btn')) {
+                window.runSpeedTest(button.dataset.provider);
+            } else if (button.classList.contains('debrid-speed-test-btn')) {
+                window.runDebridSpeedTest(button.dataset.provider);
+            } else if (button.hasAttribute('data-copy-text')) {
+                window.copyText(button, button.dataset.copyText);
+            }
+        });
 
         // Auto-refresh every 30 seconds
         setInterval(loadStats, 30000);

@@ -12,7 +12,7 @@ import (
 func (s *Server) LoginHandler(w http.ResponseWriter, r *http.Request) {
 	cfg := config.Get()
 	if cfg.NeedsAuth() {
-		http.Redirect(w, r, "/register", http.StatusSeeOther)
+		s.redirectTo(w, r, "/register")
 		return
 	}
 	auth := cfg.GetAuth()
@@ -25,7 +25,7 @@ func (s *Server) LoginHandler(w http.ResponseWriter, r *http.Request) {
 			"Title":     "Login",
 			"TokenOnly": tokenOnly,
 		}
-		err := s.templates.ExecuteTemplate(w, "layout", data)
+		err := s.render(w, "layout", data)
 		if err != nil {
 			s.logger.Warn().Err(err).Msg("error rendering /login template")
 		}
@@ -64,22 +64,22 @@ func (s *Server) LoginHandler(w http.ResponseWriter, r *http.Request) {
 	session.Values["authenticated"] = true
 	session.Values["username"] = username
 	session.Values["auth_version"] = sessionVersion
-	if err := session.Save(r, w); err != nil {
+	if err := s.saveSession(w, r, session); err != nil {
 		http.Error(w, "Error saving session", http.StatusInternalServerError)
 		return
 	}
-	http.Redirect(w, r, "/", http.StatusSeeOther)
+	s.redirectTo(w, r, "/")
 }
 
 func (s *Server) LogoutHandler(w http.ResponseWriter, r *http.Request) {
 	session, _ := s.cookie.Get(r, "auth-session")
 	session.Values["authenticated"] = false
 	session.Options.MaxAge = -1
-	err := session.Save(r, w)
+	err := s.saveSession(w, r, session)
 	if err != nil {
 		return
 	}
-	http.Redirect(w, r, "/login", http.StatusSeeOther)
+	s.redirectTo(w, r, "/login")
 }
 
 func (s *Server) RegisterHandler(w http.ResponseWriter, r *http.Request) {
@@ -93,7 +93,7 @@ func (s *Server) RegisterHandler(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "forbidden", http.StatusForbidden)
 			return
 		}
-		http.Redirect(w, r, "/", http.StatusSeeOther)
+		s.redirectTo(w, r, "/")
 		return
 	}
 
@@ -103,7 +103,7 @@ func (s *Server) RegisterHandler(w http.ResponseWriter, r *http.Request) {
 			"Page":    "register",
 			"Title":   "registerVolume",
 		}
-		err := s.templates.ExecuteTemplate(w, "layout", data)
+		err := s.render(w, "layout", data)
 		if err != nil {
 			s.logger.Warn().Err(err).Msg("error rendering /register template")
 		}
@@ -135,12 +135,12 @@ func (s *Server) RegisterHandler(w http.ResponseWriter, r *http.Request) {
 	session.Values["authenticated"] = true
 	session.Values["username"] = username
 	session.Values["auth_version"] = updated.GetAuth().SessionVersion
-	if err := session.Save(r, w); err != nil {
+	if err := s.saveSession(w, r, session); err != nil {
 		http.Error(w, "Error saving session", http.StatusInternalServerError)
 		return
 	}
 
-	http.Redirect(w, r, "/", http.StatusSeeOther)
+	s.redirectTo(w, r, "/")
 }
 
 func (s *Server) IndexHandler(w http.ResponseWriter, r *http.Request) {
@@ -151,7 +151,7 @@ func (s *Server) IndexHandler(w http.ResponseWriter, r *http.Request) {
 		"Title":      "Queues",
 		"SetupError": cfg.SetupError(),
 	}
-	err := s.templates.ExecuteTemplate(w, "layout", data)
+	err := s.render(w, "layout", data)
 	if err != nil {
 		s.logger.Warn().Err(err).Msg("error rendering /index template")
 	}
@@ -173,7 +173,7 @@ func (s *Server) DownloadHandler(w http.ResponseWriter, r *http.Request) {
 		"alwaysRemoveTrackerURLS": cfg.AlwaysRmTrackerUrls,
 		"SetupError":              cfg.SetupError(),
 	}
-	err := s.templates.ExecuteTemplate(w, "layout", data)
+	err := s.render(w, "layout", data)
 	if err != nil {
 		s.logger.Warn().Err(err).Msg("error rendering /download template")
 	}
@@ -187,7 +187,7 @@ func (s *Server) RepairHandler(w http.ResponseWriter, r *http.Request) {
 		"Title":      "Repair",
 		"SetupError": cfg.SetupError(),
 	}
-	err := s.templates.ExecuteTemplate(w, "layout", data)
+	err := s.render(w, "layout", data)
 	if err != nil {
 		s.logger.Warn().Err(err).Msg("error rendering /repair template")
 	}
@@ -201,7 +201,7 @@ func (s *Server) ReacquireHandler(w http.ResponseWriter, r *http.Request) {
 		"Title":      "Reacquire",
 		"SetupError": cfg.SetupError(),
 	}
-	if err := s.templates.ExecuteTemplate(w, "layout", data); err != nil {
+	if err := s.render(w, "layout", data); err != nil {
 		s.logger.Warn().Err(err).Msg("error rendering /reacquire template")
 	}
 }
@@ -214,7 +214,7 @@ func (s *Server) ConfigHandler(w http.ResponseWriter, r *http.Request) {
 		"Title":      "Config",
 		"SetupError": cfg.SetupError(),
 	}
-	err := s.templates.ExecuteTemplate(w, "layout", data)
+	err := s.render(w, "layout", data)
 	if err != nil {
 		s.logger.Warn().Err(err).Msg("error rendering /config template")
 	}
@@ -227,7 +227,7 @@ func (s *Server) StatsHandler(w http.ResponseWriter, r *http.Request) {
 		"Page":    "stats",
 		"Title":   "Statistics",
 	}
-	err := s.templates.ExecuteTemplate(w, "layout", data)
+	err := s.render(w, "layout", data)
 	if err != nil {
 		s.logger.Warn().Err(err).Msg("error rendering /stats template")
 	}
@@ -241,7 +241,7 @@ func (s *Server) BrowseHandler(w http.ResponseWriter, r *http.Request) {
 		"Title":      "Browse Torrents",
 		"SetupError": cfg.SetupError(),
 	}
-	err := s.templates.ExecuteTemplate(w, "layout", data)
+	err := s.render(w, "layout", data)
 	if err != nil {
 		s.logger.Warn().Err(err).Msg("error rendering /browse template")
 	}

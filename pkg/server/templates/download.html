@@ -162,7 +162,7 @@
         </div>
     </div>
 </div>
-<script>
+<script nonce="{{.CSPNonce}}">
     document.addEventListener('DOMContentLoaded', () => {
         let downloadFolder = "{{ .DownloadFolder }}" || '';
         window.downloadManager = new DownloadManager(downloadFolder);

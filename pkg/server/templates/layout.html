@@ -15,7 +15,7 @@
 
     <link rel="preload" href="{{.URLBase}}assets/js/common.js" as="script">
 
-    <script>
+    <script nonce="{{.CSPNonce}}">
         // Early theme detection to prevent FOUC
         (function () {
             const savedTheme = localStorage.getItem('theme');
