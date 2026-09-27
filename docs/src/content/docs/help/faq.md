@@ -74,7 +74,7 @@ Yes! Add multiple providers in config:
 }
 ```
 
-Decypharr will automatically distribute torrents across providers based on available slots.
+Decypharr tries providers in `priority` order (lower first; unset means the provider's position in the list, ties keep list order). When a provider refuses a torrent, for example because it is not cached and `download_uncached` is off, the next provider is tried.
 
 ### How do I handle Debrid rate limits?
 

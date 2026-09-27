@@ -3,6 +3,7 @@ package manager
 import (
 	"cmp"
 	"errors"
+	"slices"
 
 	"github.com/sirrobot01/decypharr/internal/config"
 	"github.com/sirrobot01/decypharr/internal/utils"
@@ -31,14 +32,19 @@ func (m *Manager) ProviderClient(name string) debrid.Client {
 
 func (m *Manager) initDebridClients() {
 	cfg := config.Get()
-	for _, dc := range cfg.Debrids {
+	order := make([]string, 0, len(cfg.Debrids))
+	for _, dc := range config.DebridsByPriority(cfg.Debrids) {
 		client, err := m.createClient(dc)
 		if err != nil {
 			m.logger.Error().Err(err).Str("debrid", dc.Name).Msg("Failed to create debrid client")
 			continue
 		}
 		m.clients.Store(dc.Name, client)
+		if !slices.Contains(order, dc.Name) {
+			order = append(order, dc.Name)
+		}
 	}
+	m.debridOrder = order
 }
 
 // createClient creates a debrid client based on configuration
@@ -78,16 +84,17 @@ func (m *Manager) createClient(dc config.Debrid) (debrid.Client, error) {
 	return client, nil
 }
 
-// FilterDebrid returns clients that match the filter function
+// FilterDebrid returns the clients that match filter in submission order:
+// ascending priority, then config order (config.DebridsByPriority). Walking
+// m.clients instead would follow the map's per-process random seed.
 func (m *Manager) FilterDebrid(filter func(debrid.Client) bool) []debrid.Client {
 	var filtered []debrid.Client
-
-	m.clients.Range(func(key string, client debrid.Client) bool {
-		if client != nil && filter(client) {
+	for _, name := range m.debridOrder {
+		client, ok := m.clients.Load(name)
+		if ok && client != nil && filter(client) {
 			filtered = append(filtered, client)
 		}
-		return true
-	})
+	}
 	return filtered
 }
 

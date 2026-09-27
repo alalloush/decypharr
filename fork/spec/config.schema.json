@@ -148,6 +148,10 @@
           "type": "integer",
           "description": "Minimum active pots to use this debrid"
         },
+        "priority": {
+          "type": "integer",
+          "description": "Submission order, lower first; 0 means config position (index+1)"
+        },
         "limit": {
           "type": "integer",
           "description": "Maximum number of total torrents"

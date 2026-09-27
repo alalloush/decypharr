@@ -48,7 +48,7 @@ func NewFixer(manager *Manager) *Fixer {
 	// GetReader debrid order from config
 	cfg := config.Get()
 	debridOrder := make([]string, 0, len(cfg.Debrids))
-	for _, d := range cfg.Debrids {
+	for _, d := range config.DebridsByPriority(cfg.Debrids) {
 		debridOrder = append(debridOrder, d.Name)
 	}
 
@@ -362,7 +362,7 @@ func (f *Fixer) MoveTorrent(entry *storage.Entry, debridName string, reinsert bo
 }
 
 // buildAttemptOrder creates the order of debrids to attempt re-insertion
-// Priority: current active debrid first, then others in config order
+// Order: priority, then config order (config.DebridsByPriority)
 // If skipCurrent is true, current active debrid is skipped
 func (f *Fixer) buildAttemptOrder(torrent *storage.Entry, skipCurrent bool) []string {
 	order := make([]string, 0, len(f.providerOrder))
