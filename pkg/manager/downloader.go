@@ -18,6 +18,7 @@ import (
 	grab "github.com/cavaliergopher/grab/v3"
 	"github.com/rs/zerolog"
 	"github.com/sirrobot01/decypharr/internal/config"
+	"github.com/sirrobot01/decypharr/internal/utils"
 	"github.com/sirrobot01/decypharr/pkg/debrid/types"
 	"github.com/sirrobot01/decypharr/pkg/manager/link"
 	"github.com/sirrobot01/decypharr/pkg/notifications"
@@ -261,7 +262,7 @@ func (d *Downloader) createSymlinksWhenMountFilesAppear(entry *storage.Entry, fi
 			}
 
 			if file, exists := remainingFiles[entryName]; exists {
-				fileSymlinkPath := filepath.Join(symlinkDir, file.Name)
+				fileSymlinkPath := filepath.Join(symlinkDir, utils.ShortenFileName(file.Name))
 				if err := os.Symlink(fullPath, fileSymlinkPath); err != nil && !os.IsExist(err) {
 					return fmt.Errorf("failed to create symlink %s -> %s: %w", fileSymlinkPath, fullPath, err)
 				}
@@ -534,7 +535,7 @@ func (d *Downloader) processTorrentDownload(entry *storage.Entry) error {
 		p.Go(func() error {
 			if err := d.localDownloader(
 				task.link,
-				filepath.Join(downloadedFolder, task.file.Name),
+				filepath.Join(downloadedFolder, utils.ShortenFileName(task.file.Name)),
 				task.file.ByteRange,
 				progressCallback,
 			); err != nil {
@@ -619,7 +620,7 @@ func (d *Downloader) processUsenetDownload(entry *storage.Entry) error {
 	p := pool.New().WithErrors().WithFirstError()
 	for _, file := range files {
 		p.Go(func() error {
-			destPath := filepath.Join(downloadedFolder, file.Name)
+			destPath := filepath.Join(downloadedFolder, utils.ShortenFileName(file.Name))
 			destFile, err := os.Create(destPath)
 			if err != nil {
 				return fmt.Errorf("failed to create file %s: %w", file.Name, err)

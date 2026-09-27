@@ -254,6 +254,10 @@ sonarr:
 2. Verify mount path is accessible
 3. Check Arr logs for specific error
 
+### Why does a download folder end in `~` and eight characters?
+
+Linux filesystems cap a single file or folder name at 255 bytes. Release names in Cyrillic, CJK and other multi-byte scripts often exceed that, and the symlink folder or file could not be created. Decypharr shortens such names on a character boundary and appends `~` plus a short hash of the full name, so two long names that share a beginning never share a folder. File names keep their extension (`.mkv`). The mount itself still shows the full name.
+
 ### Can I use both Debrid and Usenet in same Arr?
 
 Yes! Add both download clients:

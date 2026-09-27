@@ -1,10 +1,57 @@
 package utils
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"net/url"
+	"path/filepath"
 	"strings"
+	"unicode/utf8"
 )
+
+// NameMax is the longest path component, in bytes, that ext4, xfs, btrfs and
+// most other Linux filesystems accept (NAME_MAX). Release names written in
+// two- and three-byte scripts (Cyrillic, CJK) often exceed it.
+const NameMax = 255
+
+// maxKeptExtension bounds what ShortenFileName treats as an extension. A
+// longer suffix after the last dot is the tail of a dotted release name.
+const maxKeptExtension = 16
+
+// ShortenName fits a directory name into NameMax bytes; see shortenName.
+func ShortenName(name string) string {
+	return shortenName(name, "")
+}
+
+// ShortenFileName fits a file name into NameMax bytes and keeps its extension,
+// so a shortened media file is still recognized by its ".mkv".
+func ShortenFileName(name string) string {
+	ext := filepath.Ext(name)
+	if len(ext) > maxKeptExtension {
+		ext = ""
+	}
+	return shortenName(strings.TrimSuffix(name, ext), ext)
+}
+
+// shortenName returns stem+ext unchanged when it fits in NameMax bytes.
+// Otherwise stem is cut on a UTF-8 boundary and followed by "~" and eight hex
+// digits of a hash of the full name, then ext. The hash keeps two long names
+// that share a prefix on different paths, so removing one entry's folder never
+// removes another's, and the same name always maps to the same result.
+func shortenName(stem, ext string) string {
+	name := stem + ext
+	if len(name) <= NameMax {
+		return name
+	}
+	sum := sha256.Sum256([]byte(name))
+	tag := "~" + hex.EncodeToString(sum[:4])
+	cut := NameMax - len(tag) - len(ext)
+	for cut > 0 && !utf8.RuneStart(stem[cut]) {
+		cut--
+	}
+	return stem[:cut] + tag + ext
+}
 
 func PathUnescape(path string) string {
 	// try to use url.PathUnescape
